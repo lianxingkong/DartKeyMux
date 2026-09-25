@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
 import 'package:flutter_application_1/function_area/services/template_service.dart';
-import 'package:flutter_application_1/function_area/all_template/system_template/two_side_template.dart';
 import 'package:flutter_application_1/function_area/floating_window/create_template_page.dart';
+import '../all_template/base/template_document.dart';
+import '../all_template/player_template/custom_play_page.dart';
 
 class ChooseTemplate extends StatefulWidget {
   const ChooseTemplate({super.key});
@@ -15,31 +16,24 @@ class _ChooseTemplateState extends State<ChooseTemplate> {
   void initState() {
     super.initState();
     TemplateService.instance.loadOnce();
-    // ★ 不再需要手动挂/摘回调，ListenableBuilder 全权负责
   }
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: TemplateService.instance, // ★ 核心：自动监听 notifyListeners
+      listenable: TemplateService.instance,
       builder: (context, _) {
         final templates = TemplateService.instance.templates;
         return ListView.separated(
           padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 4),
           itemCount: templates.length,
           itemBuilder: (context, index) {
-            final draft = TemplateDraft.fromJson(templates[index]);
+            // ★ 走 draftAt：旧版本存档（纯文本/旧 JSON 格式）解析失败时兜底，
+            //   旧写法 TemplateDraft.fromJson 遇到坏数据会在 build 期间抛异常
+            final draft = TemplateService.instance.draftAt(index);
             return GestureDetector(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => TwoSideTemplate(
-                    splitFraction: draft.splitFraction,
-                    leftKey: draft.leftKey,
-                    rightKey: draft.rightKey,
-                  ),
-                ),
-              ),
+              // ✅ 新模型：自定义模板 → 进自定义游玩页
+              onTap: () => openCustomPlayPage(context, draft),
               child: Container(
                 height: 400,
                 decoration: BoxDecoration(
@@ -60,8 +54,16 @@ class _ChooseTemplateState extends State<ChooseTemplate> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          _circleIconBtn(Icons.edit,
-                              () => TemplateService.instance.editTemplate(context, index)),
+                          _circleIconBtn(Icons.edit, () async {
+                            final result = await Navigator.push<TemplateDraft>(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => CreateTemplatePage.withDraft(draft, index),
+                              ),
+                            );
+                            if (result == null) return; // 用户没保存
+                            TemplateService.instance.updateTemplate(index, result.toJson());
+                          }),
                           const SizedBox(width: 12),
                           _circleIconBtn(Icons.delete_outline,
                               () => TemplateService.instance.deleteTemplate(context, index)),
@@ -85,7 +87,6 @@ class _ChooseTemplateState extends State<ChooseTemplate> {
     );
   }
 
-  /// 圆形小按钮：写一次，多处复用
   Widget _circleIconBtn(IconData icon, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,

@@ -2,8 +2,13 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
 
 import 'package:flutter_application_1/function_area/floating_window/create_template_page.dart';
+import '../all_template/base/template_document.dart';
+
+import '../services/template_codec.dart';
+
 
 /// 改成 ChangeNotifier：谁想听谁挂监听，支持多个监听者
 class TemplateService extends ChangeNotifier {
@@ -49,6 +54,17 @@ class TemplateService extends ChangeNotifier {
 
   // ---------- 业务 ----------
 
+  /// 取第 index 个模板的草稿；解析失败（旧格式纯文本 / 坏 JSON）时
+  /// 兜底成“仅保留原字符串为名字”的空模板，保证列表页 build 不抛异常
+  TemplateDraft draftAt(int index) {
+    if (index < 0 || index >= templates.length) {
+      return const TemplateDraft(name: '未知模板', widgets: []);
+    }
+    final raw = templates[index];
+    return TemplateDraft.tryParse(raw) ??
+        TemplateDraft(name: raw, widgets: const []);
+  }
+
   /// 新建：不带 initial，保存后追加到最前面
   Future<void> addTemplate(BuildContext context) async {
     final draft = await Navigator.push<TemplateDraft>(
@@ -85,7 +101,7 @@ class TemplateService extends ChangeNotifier {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除模板'),
-        content: Text('确定删除「${TemplateDraft.fromJson(templates[index]).name}」吗？'),
+        content: Text('确定删除「${draftAt(index).name}」吗？'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
           TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('删除')),
@@ -99,13 +115,37 @@ class TemplateService extends ChangeNotifier {
     await _persist();
   }
 
-  /// 分享
+  /// 分享：导出紧凑码 → 复制剪贴板（如需系统分享面板，接 share_plus 即可）
   Future<void> shareTemplate(int index) async {
-    debugPrint('分享：${TemplateDraft.fromJson(templates[index]).name}');
+    final code = TemplateCodec.export(draftAt(index));
+    await Clipboard.setData(ClipboardData(text: code));
+    debugPrint('已复制分享码（${code.length} 字符）: $code');
+  }
+
+  /// 导入：解析 + sanitize；失败返回 false
+  Future<bool> importTemplate(String raw) async {
+    final draft = TemplateCodec.import(raw);
+    if (draft == null) return false;
+    templates.insert(0, jsonEncode(draft.toJson()));
+    notifyListeners();
+    await _persist();
+    return true;
   }
 
   /// 自启动
   Future<void> selfstartingTemlate(int index) async {
-    debugPrint('自启动：${TemplateDraft.fromJson(templates[index]).name}');
+    debugPrint('自启动：${draftAt(index).name}');
+  }
+
+  /// 覆盖第 index 个模板（越界则当新增）；持久化 + 通知
+  void updateTemplate(int index, Map<String, dynamic> json) {
+    final s = jsonEncode(json);
+    if (index >= 0 && index < templates.length) {
+      templates[index] = s;
+    } else {
+      templates.add(s);
+    }
+    _persist();   // ← 占位：换成你 service 里真正的落盘调用，见下方说明
+    notifyListeners();
   }
 }
