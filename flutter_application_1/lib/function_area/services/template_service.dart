@@ -16,12 +16,19 @@ class TemplateService extends ChangeNotifier {
   TemplateService._();
 
   static const _storageKey = 'templates';
+  static const _storageKeyAutoStartIndex = 'auto_start_index';
+  static const _storageKeyAutoStartMaster = 'auto_start_master';
 
   List<String> templates = ['预设模板A'];
 
-  List<String> selfstarting = [];   // 记录自启动模板信息
+  int? _autoStartIndex;            // 当前拥有自启动属性的模板下标（null = 无）
+  bool _autoStartMasterEnabled = false;  // 侧边栏总开关
 
   bool _loaded = false; // 防止重复读档
+
+  // ---------- 自启动 getter ----------
+  int? get autoStartIndex => _autoStartIndex;
+  bool get autoStartMasterEnabled => _autoStartMasterEnabled;
 
   // ---------- 持久化 ----------
 
@@ -34,8 +41,20 @@ class TemplateService extends ChangeNotifier {
       debugPrint('【读档】磁盘上取到: $saved');
       if (saved != null && saved.isNotEmpty) {
         templates = saved;
-        notifyListeners();
       }
+
+      // ★ 自启动设置
+      final autoIdx = prefs.getInt(_storageKeyAutoStartIndex);
+      _autoStartIndex = autoIdx;
+      _autoStartMasterEnabled = prefs.getBool(_storageKeyAutoStartMaster) ?? false;
+
+      // 校验下标合法性（模板可能已被删除）
+      if (_autoStartIndex != null &&
+          (_autoStartIndex! < 0 || _autoStartIndex! >= templates.length)) {
+        _autoStartIndex = null;
+      }
+
+      notifyListeners();
     } catch (e) {
       debugPrint('【读档】异常: $e');
       _loaded = false; // 失败了允许下次重试
@@ -49,6 +68,21 @@ class TemplateService extends ChangeNotifier {
       debugPrint('【存盘】${ok ? '成功' : '失败'}: $templates');
     } catch (e) {
       debugPrint('【存盘】异常: $e');
+    }
+  }
+
+  Future<void> _persistAutoStart() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (_autoStartIndex != null) {
+        await prefs.setInt(_storageKeyAutoStartIndex, _autoStartIndex!);
+      } else {
+        await prefs.remove(_storageKeyAutoStartIndex);
+      }
+      await prefs.setBool(_storageKeyAutoStartMaster, _autoStartMasterEnabled);
+      debugPrint('【存盘-自启动】index=$_autoStartIndex master=$_autoStartMasterEnabled');
+    } catch (e) {
+      debugPrint('【存盘-自启动】异常: $e');
     }
   }
 
@@ -74,6 +108,11 @@ class TemplateService extends ChangeNotifier {
     if (draft == null) return;
 
     templates.insert(0, jsonEncode(draft.toJson())); // 新模板排最前
+    // 插入导致所有旧模板下标 +1，自启动下标也需同步
+    if (_autoStartIndex != null) {
+      _autoStartIndex = _autoStartIndex! + 1;
+      await _persistAutoStart();
+    }
     notifyListeners();
     await _persist();
     debugPrint('【新建】已保存: ${draft.name}');
@@ -111,6 +150,17 @@ class TemplateService extends ChangeNotifier {
     if (confirmed != true) return;
 
     templates.removeAt(index);
+
+    // 如果删除的刚好是自启动模板，清除自启动属性
+    if (_autoStartIndex == index) {
+      _autoStartIndex = null;
+      await _persistAutoStart();
+    } else if (_autoStartIndex != null && _autoStartIndex! > index) {
+      // 删除导致下标前移，自启动下标需减1
+      _autoStartIndex = _autoStartIndex! - 1;
+      await _persistAutoStart();
+    }
+
     notifyListeners();
     await _persist();
   }
@@ -146,6 +196,11 @@ class TemplateService extends ChangeNotifier {
     debugPrint('【导入】解析完成: ${draft?.name}');
     if (draft == null) return false;
     templates.insert(0, jsonEncode(draft.toJson()));
+    // 插入导致所有旧模板下标 +1，自启动下标也需同步
+    if (_autoStartIndex != null) {
+      _autoStartIndex = _autoStartIndex! + 1;
+      await _persistAutoStart();
+    }
     debugPrint('【导入】已插入列表');
     notifyListeners();
     await _persist();
@@ -154,9 +209,26 @@ class TemplateService extends ChangeNotifier {
   }
 
 
-  /// 自启动
+  /// 自启动：同一模板再次点击 = 取消；不同模板 = 转移自启动属性
   Future<void> selfstartingTemlate(int index) async {
-    debugPrint('自启动：${draftAt(index).name}');
+    if (_autoStartIndex == index) {
+      _autoStartIndex = null;
+      debugPrint('自启动已取消：${draftAt(index).name}');
+    } else {
+      final prev = _autoStartIndex != null ? '（原：${draftAt(_autoStartIndex!).name}）' : '';
+      _autoStartIndex = index;
+      debugPrint('自启动已设置：${draftAt(index).name} $prev');
+    }
+    notifyListeners();
+    await _persistAutoStart();
+  }
+
+  /// 侧边栏自启动总开关
+  Future<void> setAutoStartMaster(bool value) async {
+    _autoStartMasterEnabled = value;
+    notifyListeners();
+    await _persistAutoStart();
+    debugPrint('自启动总开关：$value');
   }
 
   /// 覆盖第 index 个模板（越界则当新增）；持久化 + 通知

@@ -71,8 +71,8 @@ class _ChooseTemplateState extends State<ChooseTemplate> {
                           _circleIconBtn(Icons.share,
                               () => TemplateService.instance.shareTemplate(context, index)),
                           const SizedBox(width: 12),
-                          _circleIconBtn(Icons.flash_on,
-                              () => TemplateService.instance.selfstartingTemlate(index)),
+                          // ★ 自启动按钮：高亮色表示已选中
+                          _autoStartBtn(index),
                         ],
                       ),
                     ),
@@ -87,14 +87,14 @@ class _ChooseTemplateState extends State<ChooseTemplate> {
     );
   }
 
-  Widget _circleIconBtn(IconData icon, VoidCallback onTap) {
+  Widget _circleIconBtn(IconData icon, VoidCallback onTap, {Color? bgColor, Color? iconColor}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: bgColor ?? Colors.white,
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
@@ -104,8 +104,19 @@ class _ChooseTemplateState extends State<ChooseTemplate> {
             ),
           ],
         ),
-        child: Icon(icon, size: 20, color: const Color.fromARGB(255, 60, 90, 120)),
+        child: Icon(icon, size: 20, color: iconColor ?? const Color.fromARGB(255, 60, 90, 120)),
       ),
+    );
+  }
+
+  /// 自启动按钮：激活时琥珀色背景 + 白色图标，未激活时与其它按钮一致
+  Widget _autoStartBtn(int index) {
+    final isActive = TemplateService.instance.autoStartIndex == index;
+    return _circleIconBtn(
+      Icons.flash_on,
+      () => TemplateService.instance.selfstartingTemlate(index),
+      bgColor: isActive ? Colors.amber.shade600 : null,
+      iconColor: isActive ? Colors.white : null,
     );
   }
 }

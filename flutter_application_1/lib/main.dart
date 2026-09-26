@@ -5,6 +5,7 @@ import 'package:flutter_application_1/function_area/sidebar/main_sidebar_menu.da
 import 'package:flutter_application_1/function_area/home_page_view/choose_template.dart';
 import 'package:flutter_application_1/function_area/services/template_service.dart';
 import 'package:flutter_application_1/function_area/services/connect_grc.dart';
+import 'package:flutter_application_1/function_area/all_template/player_template/custom_play_page.dart';
 
 
 Future<void> main() async {
@@ -31,8 +32,40 @@ class MainApp extends StatelessWidget {
   }
 }
 
-class _MainInterface extends StatelessWidget{
+class _MainInterface extends StatefulWidget {
   const _MainInterface();
+
+  @override
+  State<_MainInterface> createState() => __MainInterfaceState();
+}
+
+class __MainInterfaceState extends State<_MainInterface> {
+  bool _autoStartHandled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // ★ 自启动：首帧完成后立即跳转，跳过主页显示
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _tryAutoStart();
+    });
+  }
+
+  void _tryAutoStart() {
+    if (_autoStartHandled) return;
+    final service = TemplateService.instance;
+    if (!service.autoStartMasterEnabled) return;          // 总开关未开启
+    final idx = service.autoStartIndex;
+    if (idx == null) return;                              // 没有指定模板
+    if (idx < 0 || idx >= service.templates.length) return; // 下标无效
+
+    _autoStartHandled = true;
+    final draft = service.draftAt(idx);
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => CustomPlayPage(draft: draft)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

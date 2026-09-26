@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:flutter_application_1/function_area/setting/basic_setting_page.dart';
+import 'package:flutter_application_1/function_area/services/template_service.dart';
 
 
 class MainSidebarMenu extends StatefulWidget {
@@ -11,8 +12,6 @@ class MainSidebarMenu extends StatefulWidget {
 }
 
 class _MainSidebarMenuState extends State<MainSidebarMenu> {
-  // 自启动开关状态
-  bool _autoStart = false;
 
   @override
   Widget build(BuildContext context) {
@@ -33,13 +32,32 @@ class _MainSidebarMenuState extends State<MainSidebarMenu> {
               ListTile(
                 leading: const Icon(Icons.flash_on),
                 title: const Text("自启动指定模板"),
-                trailing: Switch(
-                  value: _autoStart,
-                  onChanged: (value) {
-                    setState(() {
-                      _autoStart = value;
-                    });
-                    debugPrint('自启动开关：$_autoStart');
+                trailing: ListenableBuilder(
+                  listenable: TemplateService.instance,
+                  builder: (context, _) {
+                    final masterOn = TemplateService.instance.autoStartMasterEnabled;
+                    // 只有设置了自启动模板时总开关才有实际意义，用副文本提示当前状态
+                    final hasTarget = TemplateService.instance.autoStartIndex != null;
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (hasTarget)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 4),
+                            child: Text(
+                              TemplateService.instance.draftAt(TemplateService.instance.autoStartIndex!).name,
+                              style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        Switch(
+                          value: masterOn,
+                          onChanged: (value) {
+                            TemplateService.instance.setAutoStartMaster(value);
+                          },
+                        ),
+                      ],
+                    );
                   },
                 ),
               ),
