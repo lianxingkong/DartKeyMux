@@ -115,22 +115,44 @@ class TemplateService extends ChangeNotifier {
     await _persist();
   }
 
+
   /// 分享：导出紧凑码 → 复制剪贴板（如需系统分享面板，接 share_plus 即可）
-  Future<void> shareTemplate(int index) async {
+  Future<void> shareTemplate(BuildContext context, int index) async {
     final code = TemplateCodec.export(draftAt(index));
     await Clipboard.setData(ClipboardData(text: code));
     debugPrint('已复制分享码（${code.length} 字符）: $code');
+
+    if (!context.mounted) return;
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('已复制'),
+        content: const Text('分享码已复制到剪贴板'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('好的'),
+          ),
+        ],
+      ),
+    );
   }
+
 
   /// 导入：解析 + sanitize；失败返回 false
   Future<bool> importTemplate(String raw) async {
+    debugPrint('【导入】开始，收到 ${raw.length} 字符，前20字符: ${raw.substring(0, raw.length.clamp(0, 20))}');
     final draft = TemplateCodec.import(raw);
+    debugPrint('【导入】解析完成: ${draft?.name}');
     if (draft == null) return false;
     templates.insert(0, jsonEncode(draft.toJson()));
+    debugPrint('【导入】已插入列表');
     notifyListeners();
     await _persist();
+    debugPrint('【导入】存盘完成');
     return true;
   }
+
 
   /// 自启动
   Future<void> selfstartingTemlate(int index) async {

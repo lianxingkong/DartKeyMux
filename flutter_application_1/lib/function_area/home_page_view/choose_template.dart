@@ -69,7 +69,7 @@ class _ChooseTemplateState extends State<ChooseTemplate> {
                               () => TemplateService.instance.deleteTemplate(context, index)),
                           const SizedBox(width: 12),
                           _circleIconBtn(Icons.share,
-                              () => TemplateService.instance.shareTemplate(index)),
+                              () => TemplateService.instance.shareTemplate(context, index)),
                           const SizedBox(width: 12),
                           _circleIconBtn(Icons.flash_on,
                               () => TemplateService.instance.selfstartingTemlate(index)),

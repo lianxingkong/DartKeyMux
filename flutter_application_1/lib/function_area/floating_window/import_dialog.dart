@@ -32,7 +32,9 @@ Future<void> showTemplateImportDialog(BuildContext context) async {
       ],
     ),
   );
-  ctrl.dispose(); // ✅ 补释放（对话框关闭后 controller 不再需要）
+
+  Future.delayed(const Duration(milliseconds: 400), ctrl.dispose);  // 延迟释放，防止卡死
+
   if (!context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(content: Text(ok == true ? '导入成功' : '分享码无效')),

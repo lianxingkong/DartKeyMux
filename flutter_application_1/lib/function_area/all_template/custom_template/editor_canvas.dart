@@ -88,7 +88,7 @@ class _EditorItem extends StatelessWidget {
     required this.onDragEnd,
     required this.onRotate,
     required this.onResize,
-  }); // ← 上一版漏了这个 ");"，是全部报错的根因
+  });
 
   static const double _m = 56; // 柄的外边距
 

@@ -14,7 +14,7 @@ class SnapResult {
 
 /// 吸附引擎：移动时“自己的边/中心 ↔ 他人的边/中心 ↔ 屏幕边与中线”
 class SnapEngine {
-  static const double dist = 14.0;
+  static const double dist = 6.0;    // 粘滞感，可调小一点，系数越大粘滞感越强
 
   static SnapResult snapMove(
       Offset c, double half, Size canvas, List<Rect> others) {

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'package:flutter_application_1/function_area/services/template_service.dart';  // ★ 换成导入 Service
+import './import_dialog.dart';
+
 
 class FloatButton extends StatelessWidget {
   const FloatButton({super.key});
@@ -31,12 +33,12 @@ class FloatButton extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: menuWidth),
       items: const [
         PopupMenuItem(
-          value: 'add_file',
+          value: 'add_share_template',
           height: 56,
           child: Row(children: [
             Icon(Icons.file_upload_outlined, size: 20),
             SizedBox(width: 8),
-            Text('导入文件'),
+            Text('导入模板'),
           ]),
         ),
         PopupMenuItem(
@@ -53,8 +55,8 @@ class FloatButton extends StatelessWidget {
 
     if (!context.mounted) return;
 
-    if (result == 'add_file') {
-      debugPrint('导入文件');
+    if (result == 'add_share_template') {
+      await showTemplateImportDialog(context);
     } else if (result == 'add_new_template') {
       // ★ 唯一的改动：交给 TemplateService，让它收 draft、写列表、存盘、通知主页
       await TemplateService.instance.addTemplate(context);

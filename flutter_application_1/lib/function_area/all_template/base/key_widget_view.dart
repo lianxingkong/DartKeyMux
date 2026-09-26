@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'key_widget.dart';
 
 /// 组件纯视觉。编辑态与游玩态共用 → 所见即所得。
-/// pressed：变色 + 微缩，给音游手感。
+/// pressed：变色，给音游手感。
 class KeyWidgetView extends StatelessWidget {
   const KeyWidgetView({
     super.key,
@@ -23,41 +23,36 @@ class KeyWidgetView extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = pressed ? _active : _idle;
     final circle = w.shape == KShape.circle;
-    return AnimatedScale(
-      scale: pressed ? 0.93 : 1.0,
+    return AnimatedContainer(
       duration: const Duration(milliseconds: 90),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 90),
-        decoration: BoxDecoration(
-          color: c,
-          shape: circle ? BoxShape.circle : BoxShape.rectangle,
-          borderRadius: circle ? null : BorderRadius.circular(pxSize * .12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: .22),
-              blurRadius: 10, spreadRadius: 1,
-            ),
-          ],
-        ),
-        alignment: Alignment.center,
-        child: pxSize < 44
-            ? null // 太小就不写字了
-            : FittedBox(
-                child: Padding(
-                  padding: EdgeInsets.all(pxSize * .14),
-                  child: Text(
-                    w.key,
-                    style: TextStyle(
-                      fontSize: 40,
-                      fontWeight: FontWeight.bold,
-                      color: c.computeLuminance() > .45
-                          ? const Color(0xEE263238)
-                          : Colors.white,
-                    ),
+      decoration: BoxDecoration(
+        color: c,
+        shape: circle ? BoxShape.circle : BoxShape.rectangle,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: .22),
+            blurRadius: 10, spreadRadius: 1,
+          ),
+        ],
+      ),
+      alignment: Alignment.center,
+      child: pxSize < 44
+          ? null // 太小就不写字了
+          : FittedBox(
+              child: Padding(
+                padding: EdgeInsets.all(pxSize * .14),
+                child: Text(
+                  w.key,
+                  style: TextStyle(
+                    fontSize: 40,
+                    fontWeight: FontWeight.bold,
+                    color: c.computeLuminance() > .45
+                        ? const Color(0xEE263238)
+                        : Colors.white,
                   ),
                 ),
               ),
-      ),
+            ),
     );
   }
 }
