@@ -17,7 +17,13 @@ class KeyWidgetView extends StatelessWidget {
 
   Color get _idle => w.idleColor ??
       (w.shape == KShape.circle ? const Color(0xFF26A69A) : const Color(0xFF5C7CFA));
-  Color get _active => w.pressedColor ?? _idle.withValues(alpha: 0.5); // 不填自动派生
+  Color get _active {
+    final base = w.pressedColor ??
+        HSLColor.fromColor(_idle)
+            .withLightness((HSLColor.fromColor(_idle).lightness * 0.7).clamp(0.0, 1.0))
+            .toColor();
+    return base.withValues(alpha: 1); // 任何来源都强制不透明
+  }
 
   @override
   Widget build(BuildContext context) {
