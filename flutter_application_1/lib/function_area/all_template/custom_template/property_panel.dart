@@ -8,18 +8,18 @@ const _palette = <int>[
 ];
 
 /// 属性面板：实时应用（改一个属性立刻反映到画布上，用户利好）
+/// ★ 独立宽高：增加宽度/高度两个独立滑块，配套\"等比锁定\"开关
 Future<void> showWidgetPropertySheet({
   required BuildContext context,
   required KeyWidget w,
   required ValueChanged<KeyWidget> onChanged,
-  required ValueChanged<int> onReorder, // +1/-1 移一层，±999 置顶/置底
+  required ValueChanged<int> onReorder,
   required VoidCallback onDuplicate,
   required VoidCallback onDelete,
 }) {
   var cur = w;
+  var aspectLocked = cur.sizeW == cur.sizeH; // 初始等比则锁定
 
-  // ✅ TextField 没有 initialValue 参数（那是 TextFormField 的），
-  //    用 controller 携带初始值；关闭弹层时释放，防止泄漏。
   final keyCtrl = TextEditingController(text: cur.key);
 
   return showModalBottomSheet(
@@ -47,15 +47,12 @@ Future<void> showWidgetPropertySheet({
 
               _label('映射按键'),
               TextField(
-                controller: keyCtrl,               // ✅ 修正点
+                controller: keyCtrl,
                 maxLength: 4,
                 textCapitalization: TextCapitalization.none,
                 decoration: const InputDecoration(
                     isDense: true, border: OutlineInputBorder()),
                 onChanged: (v) {
-                  // ★ 面板内没有任何随按键文本变化的 UI，
-                  //   不需要 setSheet 整个底栏重建（旧写法每敲一个字符
-                  //   就重建整张面板 + 整个编辑器画布，长按/连续输入卡顿）
                   onChanged(cur = cur.copyWith(key: v));
                 },
               ),
@@ -79,22 +76,59 @@ Future<void> showWidgetPropertySheet({
                 },
               ),
 
-              _label('大小（可超过屏幕 → 分割线玩法）'),
+              // ── 独立宽高 ──
+              _label('宽度（可超过屏幕 → 分割线玩法）'),
               Row(children: [
                 Expanded(
                   child: Slider(
                     min: .05,
                     max: 2.2,
                     divisions: 43,
-                    value: cur.size.clamp(.05, 2.2).toDouble(),
-                    label: '${(cur.size * 100).round()}%',
+                    value: cur.sizeW.clamp(.05, 2.2),
+                    label: '${(cur.sizeW * 100).round()}% 屏宽',
                     onChanged: (v) {
                       setSheet(() {});
-                      onChanged(cur = cur.copyWith(size: v));
+                      final newH = aspectLocked
+                          ? (v * cur.sizeH / cur.sizeW).clamp(.05, 2.2)
+                          : cur.sizeH;
+                      onChanged(cur = cur.copyWith(sizeW: v, sizeH: newH));
                     },
                   ),
                 ),
-                Text('${(cur.size * 100).round()}%'),
+                Text('${(cur.sizeW * 100).round()}%'),
+              ]),
+
+              _label('高度（可超过屏幕）'),
+              Row(children: [
+                Expanded(
+                  child: Slider(
+                    min: .05,
+                    max: 2.2,
+                    divisions: 43,
+                    value: cur.sizeH.clamp(.05, 2.2),
+                    label: '${(cur.sizeH * 100).round()}% 屏高',
+                    onChanged: (v) {
+                      setSheet(() {});
+                      final newW = aspectLocked
+                          ? (v * cur.sizeW / cur.sizeH).clamp(.05, 2.2)
+                          : cur.sizeW;
+                      onChanged(cur = cur.copyWith(sizeW: newW, sizeH: v));
+                    },
+                  ),
+                ),
+                Text('${(cur.sizeH * 100).round()}%'),
+              ]),
+
+              // 等比锁定开关
+              Row(children: [
+                const Text('等比缩放'),
+                const SizedBox(width: 8),
+                Switch(
+                  value: aspectLocked,
+                  onChanged: (v) {
+                    setSheet(() => aspectLocked = v);
+                  },
+                ),
               ]),
 
               _label('旋转'),
@@ -175,7 +209,7 @@ Future<void> showWidgetPropertySheet({
         ),
       ),
     ),
-  ).whenComplete(() => keyCtrl.dispose()); // ✅ 关闭弹层后释放 controller
+  ).whenComplete(() => keyCtrl.dispose());
 }
 
 Widget _label(String t) => Padding(

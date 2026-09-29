@@ -16,8 +16,9 @@ class SnapResult {
 class SnapEngine {
   static const double dist = 5.0;    // 粘滞感，可调小一点，系数越大粘滞感越强
 
+  /// halfW / halfH 可为不同值 → 矩形/椭圆组件的吸附线正确对其真实边缘
   static SnapResult snapMove(
-      Offset c, double half, Size canvas, List<Rect> others) {
+      Offset c, double halfW, double halfH, Size canvas, List<Rect> others) {
     final xs = <double>[0, canvas.width / 2, canvas.width];
     final ys = <double>[0, canvas.height / 2, canvas.height];
     for (final r in others) {
@@ -29,7 +30,7 @@ class SnapEngine {
 
     double bestX = dist, shiftX = 0;
     double? gx;
-    for (final probe in [c.dx - half, c.dx, c.dx + half]) {
+    for (final probe in [c.dx - halfW, c.dx, c.dx + halfW]) {
       for (final cand in xs) {
         final d = (cand - probe).abs();
         if (d < bestX) { bestX = d; shiftX = cand - probe; gx = cand; }
@@ -39,7 +40,7 @@ class SnapEngine {
 
     double bestY = dist, shiftY = 0;
     double? gy;
-    for (final probe in [c.dy - half, c.dy, c.dy + half]) {
+    for (final probe in [c.dy - halfH, c.dy, c.dy + halfH]) {
       for (final cand in ys) {
         final d = (cand - probe).abs();
         if (d < bestY) { bestY = d; shiftY = cand - probe; gy = cand; }

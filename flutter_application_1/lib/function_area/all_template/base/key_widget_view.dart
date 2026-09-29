@@ -3,17 +3,26 @@ import 'key_widget.dart';
 
 /// 组件纯视觉。编辑态与游玩态共用 → 所见即所得。
 /// pressed：变色，给音游手感。
+///
+/// ★ 支持独立宽高：pxWidth / pxHeight 分别控制，圆形控件不同宽高时呈现椭圆。
 class KeyWidgetView extends StatelessWidget {
   const KeyWidgetView({
     super.key,
     required this.w,
-    required this.pxSize,   // 边长（px）
+    this.pxSize,       // 兼容旧接口：等宽高时用
+    this.pxWidth,      // 新接口：独立宽度（px）
+    this.pxHeight,     // 新接口：独立高度（px）
     this.pressed = false,
   });
 
   final KeyWidget w;
-  final double pxSize;
+  final double? pxSize;
+  final double? pxWidth;
+  final double? pxHeight;
   final bool pressed;
+
+  double get _w => pxWidth ?? pxSize ?? 100;
+  double get _h => pxHeight ?? pxSize ?? 100;
 
   Color get _idle => w.idleColor ??
       (w.shape == KShape.circle ? const Color(0xFF26A69A) : const Color(0xFF5C7CFA));
@@ -22,18 +31,25 @@ class KeyWidgetView extends StatelessWidget {
         HSLColor.fromColor(_idle)
             .withLightness((HSLColor.fromColor(_idle).lightness * 0.7).clamp(0.0, 1.0))
             .toColor();
-    return base.withValues(alpha: 1); // 任何来源都强制不透明
+    return base.withValues(alpha: 1);
   }
 
   @override
   Widget build(BuildContext context) {
     final c = pressed ? _active : _idle;
     final circle = w.shape == KShape.circle;
+    final minSide = _w < _h ? _w : _h;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 90),
+      width: _w,
+      height: _h,
       decoration: BoxDecoration(
         color: c,
-        shape: circle ? BoxShape.circle : BoxShape.rectangle,
+        // 圆形：始终用 perfect circle（通过 borderRadius 实现椭圆）
+        shape: (circle && _w == _h) ? BoxShape.circle : BoxShape.rectangle,
+        borderRadius: (circle && _w != _h)
+            ? BorderRadius.all(Radius.circular(minSide / 2))
+            : null,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: .22),
@@ -42,11 +58,11 @@ class KeyWidgetView extends StatelessWidget {
         ],
       ),
       alignment: Alignment.center,
-      child: pxSize < 44
-          ? null // 太小就不写字了
+      child: minSide < 44
+          ? null
           : FittedBox(
               child: Padding(
-                padding: EdgeInsets.all(pxSize * .14),
+                padding: EdgeInsets.all(minSide * .14),
                 child: Text(
                   w.key,
                   style: TextStyle(

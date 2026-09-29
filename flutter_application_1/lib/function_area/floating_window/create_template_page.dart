@@ -6,12 +6,15 @@ import '../all_template/custom_template/snap_engine.dart';
 import '../all_template/custom_template/editor_canvas.dart';
 import '../all_template/custom_template/property_panel.dart';
 
-/// 模板编辑器：全画画布 + 悬浮顶栏(名称) + 悬浮工具条。
+/// 模板编辑器：全屏画布 + 悬浮顶栏(名称) + 悬浮工具条。
 /// 画布全屏铺放，globalPosition == 画布坐标，几何计算无偏移。
+///
+/// ★ 独立宽高：sizeW/sizeH 取代单一 size；编辑器提供三个缩放柄。
+/// ★ 双指缩放：双指拉升整体放大/缩小画布视图（0.3× ~ 3.0×）。
 class CreateTemplatePage extends StatefulWidget {
   const CreateTemplatePage({super.key, this.initial, this.editIndex = -1});
 
-    /// 编辑已有模板：index >= 0 时，调用方按"覆盖第 index 个"处理返回值
+  /// 编辑已有模板：index >= 0 时，调用方按"覆盖第 index 个"处理返回值
   const CreateTemplatePage.withDraft(TemplateDraft draft, int index)
       : initial = draft,
         editIndex = index;
@@ -25,14 +28,14 @@ class CreateTemplatePage extends StatefulWidget {
 
 class _CreateTemplatePageState extends State<CreateTemplatePage> {
   late String _name;
-  // ★ 只创建一次、页面销毁时释放。旧写法在每次 build 里
-  //   new 一个 TextEditingController（带空 listener）→ 逐帧泄漏，
-  //   且页面 rebuild 时名字输入框丢失光标/文本。
   late final TextEditingController _nameCtrl;
-  late List<KeyWidget> _widgets; // 顺序即层级：靠后 = 上层（需求5）
+  late List<KeyWidget> _widgets;
   String? _selId;
   List<GuideLine> _guides = [];
   Size _canvas = Size.zero;
+
+  /// 画布缩放（双指拉升 / 工具栏 ± 按钮）
+  double _canvasScale = 1.0;
 
   @override
   void initState() {
@@ -44,7 +47,7 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
 
   @override
   void dispose() {
-    _nameCtrl.dispose(); // ★ 释放，防泄漏
+    _nameCtrl.dispose();
     super.dispose();
   }
 
@@ -63,14 +66,15 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
     _selId = w.id;
   });
 
-  // ── 拖动（带吸附）──
+  // ── 拖动（带吸附；delta 需除以画布缩放）──
   void _onDrag(KeyWidget w, Offset delta) {
-    var c = w.centerPx(_canvas).translate(delta.dx, delta.dy);
+    final sd = delta / _canvasScale;               // ★ 缩放补偿
+    var c = w.centerPx(_canvas).translate(sd.dx, sd.dy);
     final others = [
       for (final o in _widgets)
         if (o.id != w.id) o.aabbPx(_canvas),
     ];
-    final r = SnapEngine.snapMove(c, w.halfPx(_canvas), _canvas, others);
+    final r = SnapEngine.snapMove(c, w.halfWPx(_canvas), w.halfHPx(_canvas), _canvas, others);
     setState(() {
       _guides = r.guides;
       final i = _widgets.indexWhere((e) => e.id == w.id);
@@ -85,24 +89,53 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
 
   void _onDragEnd() => setState(() => _guides = []);
 
-  // ── 旋转（45° 吸附）──
+  // ── 旋转（45° 吸附；gp 需除以画布缩放）──
   void _onRotate(KeyWidget w, Offset gp) {
+    final sp = gp / _canvasScale;                   // ★ 缩放补偿
     final c = w.centerPx(_canvas);
-    var deg = math.atan2(gp.dy - c.dy, gp.dx - c.dx) * 180 / math.pi + 90;
+    var deg = math.atan2(sp.dy - c.dy, sp.dx - c.dx) * 180 / math.pi + 90;
     deg = (deg % 360 + 360) % 360;
     final snapped = (deg / 45).round() * 45.0;
     if ((deg - snapped).abs() <= 7) deg = snapped % 360;
     _upd(w.copyWith(rotation: deg % 360));
   }
 
-  // ── 缩放：柄在本地 45° 对角线上，投影即新 half；对“他人的边到中心的距离”吸附 ──
-  void _onResize(KeyWidget w, Offset gp) {
+  // ── 缩放：三种模式 ——
+  void _onResize(KeyWidget w, Offset gp, ResizeMode mode) {
+    final sp = gp / _canvasScale;                   // ★ 缩放补偿
     final c = w.centerPx(_canvas);
-    final d = gp - c;
+    final d = sp - c;
     final ct = math.cos(w.rotationRad), st = math.sin(w.rotationRad);
-    final lx =  d.dx * ct + d.dy * st;   // 逆旋转到本地系
-    final ly = -d.dx * st + d.dy * ct;
-    var half = ((lx + ly) / 2).clamp(14.0, _canvas.width * 2.0); // 需求3：可越界放大
+    final lx =  d.dx * ct + d.dy * st;   // 逆旋转到本地系 x
+    final ly = -d.dx * st + d.dy * ct;   // 逆旋转到本地系 y
+
+    double newHalfW, newHalfH;
+
+    switch (mode) {
+      case ResizeMode.uniform:
+        // 右下角 → 沿 45° 对角线投影，维持原有宽高比
+        final half = ((lx + ly) / 2).clamp(14.0, _canvas.width * 2.0);
+        final oldRatio = w.sizeW / (w.sizeH == 0 ? .01 : w.sizeH);
+        final newW = (2 * half / _canvas.width).clamp(.02, 4.0);
+        final newH = (newW / oldRatio).clamp(.02, 4.0);
+        newHalfW = newW * _canvas.width / 2;
+        newHalfH = newH * _canvas.height / 2;
+        break;
+
+      case ResizeMode.width:
+        // 右侧边缘 → 仅改宽度（lx 为正时拉宽，为负时压窄）
+        newHalfW = lx.abs().clamp(14.0, _canvas.width * 2.0);
+        newHalfH = w.halfHPx(_canvas);
+        break;
+
+      case ResizeMode.height:
+        // 下侧边缘 → 仅改高度（ly 为正时拉高，为负时压矮）
+        newHalfW = w.halfWPx(_canvas);
+        newHalfH = ly.abs().clamp(14.0, _canvas.height * 2.0);
+        break;
+    }
+
+    // 吸附：对"他人的边到中心的距离"
     final cands = <double>[];
     for (final o in _widgets) {
       if (o.id == w.id) continue;
@@ -113,12 +146,28 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
         ..add((r.top - c.dy).abs())
         ..add((r.bottom - c.dy).abs());
     }
-    half = SnapEngine.snapScalar(half, cands);
-    _upd(w.copyWith(size: 2 * half / _canvas.width));
+    if (mode == ResizeMode.uniform || mode == ResizeMode.width) {
+      newHalfW = SnapEngine.snapScalar(newHalfW, cands);
+    }
+    if (mode == ResizeMode.uniform || mode == ResizeMode.height) {
+      newHalfH = SnapEngine.snapScalar(newHalfH, cands);
+    }
+
+    _upd(w.copyWith(
+      sizeW: (2 * newHalfW / _canvas.width).clamp(.02, 4.0),
+      sizeH: (2 * newHalfH / _canvas.height).clamp(.02, 4.0),
+    ));
+  }
+
+  // ── 画布缩放 ──
+  void _onScaleUpdate(ScaleUpdateDetails d) {
+    setState(() {
+      _canvasScale = (_canvasScale * d.scale).clamp(0.3, 3.0);
+    });
   }
 
   // ── 层级 / 复制 / 删除 ──
-  void _reorder(int dir) { // +1 上移 / -1 下移 / ±999 置顶/置底
+  void _reorder(int dir) {
     final i = _widgets.indexWhere((e) => e.id == _selId);
     if (i < 0) return;
     setState(() {
@@ -140,7 +189,8 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
         shape: s.shape, key: s.key,
         cx: (s.cx + .04).clamp(-1.0, 2.0),
         cy: (s.cy + .04).clamp(-1.0, 2.0),
-        size: s.size, rotation: s.rotation,
+        sizeW: s.sizeW, sizeH: s.sizeH,
+        rotation: s.rotation,
         idleColor: s.idleColor, pressedColor: s.pressedColor,
       );
       _widgets.insert(i + 1, w);
@@ -173,8 +223,6 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
       return;
     }
     final name = _name.trim().isEmpty ? '未命名模板' : _name.trim();
-    // ★ 键位兜底：映射键被清空/纯空白时回落到 'a'，
-    //   防止空字符串进存档、之后作为 rune 发给后端引发不可控行为
     final widgets = [
       for (final w in _widgets)
         w.copyWith(key: w.key.trim().isEmpty ? 'a' : w.key.trim()),
@@ -187,30 +235,37 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
     return Scaffold(
       backgroundColor: const Color(0xFFECEFF1),
       body: LayoutBuilder(builder: (context, cons) {
-        _canvas = cons.biggest; // 布局期间缓存，供回调使用
+        _canvas = cons.biggest;
         return Stack(children: [
-          // 画布（全屏，最底层）
+          // 画布（全屏，最底层）+ 双指缩放手势
           Positioned.fill(
-            child: EditorCanvas(
-              size: _canvas,
-              widgets: _widgets,
-              selectedId: _selId,
-              guides: _guides,
-              onBackgroundTap: () => setState(() { _selId = null; _guides = []; }),
-              onSelect: (w) => setState(() => _selId = w.id),
-              onDrag: _onDrag,
-              onDragEnd: _onDragEnd,
-              onRotate: _onRotate,
-              onResize: _onResize,
+            child: GestureDetector(
+              onScaleStart: (_) {},            // 必须提供才能触发 onScaleUpdate
+              onScaleUpdate: _onScaleUpdate,
+              child: Transform.scale(
+                scale: _canvasScale,
+                child: EditorCanvas(
+                  size: _canvas,
+                  widgets: _widgets,
+                  selectedId: _selId,
+                  guides: _guides,
+                  onBackgroundTap: () => setState(() { _selId = null; _guides = []; }),
+                  onSelect: (w) => setState(() => _selId = w.id),
+                  onDrag: _onDrag,
+                  onDragEnd: _onDragEnd,
+                  onRotate: _onRotate,
+                  onResize: _onResize,
+                ),
+              ),
             ),
           ),
-          // 顶栏
+          // 顶栏（不随画布缩放）
           Positioned(
             top: MediaQuery.of(context).padding.top,
             left: 12, right: 12,
             child: _topBar(),
           ),
-          // 底部工具条
+          // 底部工具条（不随画布缩放）
           Positioned(
             bottom: MediaQuery.of(context).padding.bottom + 12,
             left: 0, right: 0,
@@ -231,16 +286,21 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
             const BackButton(),
             Expanded(
               child: TextField(
-                controller: _nameCtrl, // ★ 不再每次 build 新建 controller
+                controller: _nameCtrl,
                 onChanged: (v) => _name = v,
                 decoration: const InputDecoration(
                   hintText: '模板名称', border: InputBorder.none,
                 ),
               ),
             ),
+            // ★ 修复 bug：旧写法 '$_widgets 个组件' 会打印列表实例的 toString，
+            //   应为 _widgets.length 取组件个数
             Padding(
               padding: const EdgeInsets.only(right: 12),
-              child: Text('$_widgets 个组件', style: TextStyle(color: Colors.blueGrey.shade400)),
+              child: Text(
+                '${_widgets.length} 个组件',
+                style: TextStyle(color: Colors.blueGrey.shade400),
+              ),
             ),
           ]),
         ),
@@ -258,6 +318,18 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             _tb(Icons.crop_square, '方', () => _add(KShape.square)),
             _tb(Icons.circle_outlined, '圆', () => _add(KShape.circle)),
+            const SizedBox(width: 6),
+            // ★ 缩放按钮
+            _tb(Icons.zoom_out, '缩小', () {
+              setState(() => _canvasScale = (_canvasScale - 0.15).clamp(0.3, 3.0));
+            }),
+            Text(
+              '${(_canvasScale * 100).round()}%',
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+            _tb(Icons.zoom_in, '放大', () {
+              setState(() => _canvasScale = (_canvasScale + 0.15).clamp(0.3, 3.0));
+            }),
             const SizedBox(width: 6),
             _tb(Icons.tune, '属性', _openProps, enabled: hasSel),
             _tb(Icons.copy_all_outlined, '复制', _duplicate, enabled: hasSel),

@@ -5,8 +5,16 @@ import '../base/key_widget.dart';
 import '../base/key_widget_view.dart';
 import 'snap_engine.dart' show GuideLine;
 
-/// 编辑画布：只负责“画 + 抛出手势事件”，几何计算全在页面层做。
+/// 缩放模式：区分拖拽的是哪个柄
+enum ResizeMode { uniform, width, height }
+
+/// 编辑画布：只负责"画 + 抛出手势事件"，几何计算全在页面层做。
 /// 画布必须全屏铺放（起点=屏幕原点），这样 globalPosition == 画布坐标。
+///
+/// ★ 独立宽高：每个组件用 sizeW/sizeH 渲染；编辑器提供三个缩放柄：
+///   - 右下角（uniform）→ 等比例缩放
+///   - 右边缘（width）→ 仅改宽度
+///   - 下边缘（height）→ 仅改高度
 class EditorCanvas extends StatelessWidget {
   const EditorCanvas({
     super.key,
@@ -31,12 +39,12 @@ class EditorCanvas extends StatelessWidget {
   final void Function(KeyWidget w, Offset globalDelta) onDrag;
   final VoidCallback onDragEnd;
   final void Function(KeyWidget w, Offset globalPos) onRotate;
-  final void Function(KeyWidget w, Offset globalPos) onResize;
+  final void Function(KeyWidget w, Offset globalPos, ResizeMode mode) onResize;
 
   @override
   Widget build(BuildContext context) {
     return Stack(
-      clipBehavior: Clip.none, // 需求3：允许组件越界显示
+      clipBehavior: Clip.none,
       children: [
         // 背景点击层 + 网格 + 播放区边界
         Positioned.fill(
@@ -61,7 +69,7 @@ class EditorCanvas extends StatelessWidget {
             onDrag: (d) => onDrag(w, d),
             onDragEnd: onDragEnd,
             onRotate: (p) => onRotate(w, p),
-            onResize: (p) => onResize(w, p),
+            onResize: (p, m) => onResize(w, p, m),
           ),
         // 吸附参考线
         if (guides.isNotEmpty)
@@ -76,7 +84,7 @@ class EditorCanvas extends StatelessWidget {
 }
 
 /// 单个组件的编辑包装：本体 + 手势层 + 选中框 + 旋转/缩放柄。
-/// 外框比本体大一圈（_m），让柄可以放在本体之外且仍可命中。
+/// ★ 独立宽高：box 现在是矩形；三个缩放柄分布在不同边缘。
 class _EditorItem extends StatelessWidget {
   _EditorItem({
     super.key,
@@ -96,22 +104,24 @@ class _EditorItem extends StatelessWidget {
   final Size canvas;
   final bool selected;
   final VoidCallback onSelect;
-  final ValueChanged<Offset> onDrag; // 已换算到全局坐标的位移
+  final ValueChanged<Offset> onDrag;
   final VoidCallback onDragEnd;
   final ValueChanged<Offset> onRotate;
-  final ValueChanged<Offset> onResize;
+  final void Function(Offset globalPos, ResizeMode mode) onResize;
 
   @override
   Widget build(BuildContext context) {
     final c = w.centerPx(canvas);
-    final side = w.halfPx(canvas) * 2;
-    final box = side + _m * 2;
+    final wp = w.sizeW * canvas.width;  // 组件像素宽
+    final hp = w.sizeH * canvas.height; // 组件像素高
+    final boxW = wp + _m * 2;
+    final boxH = hp + _m * 2;
 
     return Positioned(
-      left: c.dx - box / 2,
-      top: c.dy - box / 2,
-      width: box,
-      height: box,
+      left: c.dx - boxW / 2,
+      top: c.dy - boxH / 2,
+      width: boxW,
+      height: boxH,
       child: Transform.rotate(
         angle: w.rotationRad,
         child: Stack(
@@ -120,20 +130,24 @@ class _EditorItem extends StatelessWidget {
             // 本体（正好覆盖组件大小）
             Positioned.fromRect(
               rect: Rect.fromCenter(
-                center: Offset(box / 2, box / 2),
-                width: side,
-                height: side,
+                center: Offset(boxW / 2, boxH / 2),
+                width: wp,
+                height: hp,
               ),
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
                   Positioned.fill(
                     child: Opacity(
-                      opacity: selected ? 1 : .8, // 未选中略透明，看清层叠
-                      child: KeyWidgetView(w: w, pxSize: side),
+                      opacity: selected ? 1 : .8,
+                      child: KeyWidgetView(
+                        w: w,
+                        pxWidth: wp,
+                        pxHeight: hp,
+                      ),
                     ),
                   ),
-                  // 手势层：拖动位移从“旋转后的局部系”换回全局系
+                  // 手势层：拖动位移从"旋转后的局部系"换回全局系
                   Positioned.fill(
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
@@ -151,30 +165,57 @@ class _EditorItem extends StatelessWidget {
                   ),
                   if (selected)
                     Positioned.fill(
-                      child: IgnorePointer(child: CustomPaint(painter: _SelPainter())),
+                      child: IgnorePointer(
+                        child: CustomPaint(painter: _SelPainter()),
+                      ),
                     ),
                 ],
               ),
             ),
             if (selected) ...[
-              // 旋转柄：本体正上方
+              // 旋转柄：本体正上方（居中）
               Positioned(
-                left: box / 2 - 17,
-                top: box / 2 - side / 2 - 51,
+                left: boxW / 2 - 17,
+                top: boxH / 2 - hp / 2 - 51,
                 width: 34,
                 height: 34,
                 child: _Handle(
                   icon: Icons.rotate_90_degrees_ccw_outlined,
-                  onPan: onRotate,
+                  onPan: (gp) => onRotate(gp),
                 ),
               ),
-              // 缩放柄：本体右下角外侧（沿本地 45° 对角线）
+              // 宽度缩放柄：本体右侧边缘居中
               Positioned(
-                left: box / 2 + side / 2 + 17,
-                top: box / 2 + side / 2 + 17,
+                left: boxW / 2 + wp / 2 + 17,
+                top: boxH / 2 - 17,
                 width: 34,
                 height: 34,
-                child: _Handle(icon: Icons.open_in_full, onPan: onResize),
+                child: _Handle(
+                  icon: Icons.swap_horiz,
+                  onPan: (gp) => onResize(gp, ResizeMode.width),
+                ),
+              ),
+              // 高度缩放柄：本体下侧边缘居中
+              Positioned(
+                left: boxW / 2 - 17,
+                top: boxH / 2 + hp / 2 + 17,
+                width: 34,
+                height: 34,
+                child: _Handle(
+                  icon: Icons.swap_vert,
+                  onPan: (gp) => onResize(gp, ResizeMode.height),
+                ),
+              ),
+              // 等比缩放柄：右下角外侧（沿本地 45° 对角线）
+              Positioned(
+                left: boxW / 2 + wp / 2 + 17,
+                top: boxH / 2 + hp / 2 + 17,
+                width: 34,
+                height: 34,
+                child: _Handle(
+                  icon: Icons.open_in_full,
+                  onPan: (gp) => onResize(gp, ResizeMode.uniform),
+                ),
               ),
             ],
           ],
@@ -188,7 +229,7 @@ class _Handle extends StatelessWidget {
   const _Handle({required this.icon, required this.onPan});
 
   final IconData icon;
-  final ValueChanged<Offset> onPan; // 直接用 globalPosition，画布全屏故 == 画布坐标
+  final ValueChanged<Offset> onPan;
 
   @override
   Widget build(BuildContext context) {
@@ -199,7 +240,9 @@ class _Handle extends StatelessWidget {
           color: Colors.white,
           shape: BoxShape.circle,
           border: Border.all(color: Colors.deepOrange, width: 2),
-          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+          boxShadow: const [
+            BoxShadow(color: Colors.black26, blurRadius: 4),
+          ],
         ),
         child: Icon(icon, size: 16, color: Colors.deepOrange),
       ),
