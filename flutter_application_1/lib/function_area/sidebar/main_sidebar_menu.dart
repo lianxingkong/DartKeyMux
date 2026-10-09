@@ -17,6 +17,7 @@ class _MainSidebarMenuState extends State<MainSidebarMenu> {
   Widget build(BuildContext context) {
     return Drawer(
       backgroundColor: const Color.fromARGB(255, 210, 243, 210),
+        child: SingleChildScrollView(
           child: Column(
             children: [
               DrawerHeader(
@@ -70,13 +71,14 @@ class _MainSidebarMenuState extends State<MainSidebarMenu> {
                     MaterialPageRoute(builder: (context) => const SettingPage()),
                   );
                 },
-                child: const ListTile(
+                child: ListTile(
                   leading: Icon(Icons.settings),
                   title: Text("设置"),
                 ),
               ),
             ],
           ),
+        ),
     );
   }
 }

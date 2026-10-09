@@ -61,3 +61,34 @@ final $typed_data.Uint8List healthCheckResponseDescriptor = $convert.base64Decod
     'hlYWx0aENoZWNrUmVzcG9uc2UuU2VydmluZ1N0YXR1c1IGc3RhdHVzIk8KDVNlcnZpbmdTdGF0'
     'dXMSCwoHVU5LTk9XThAAEgsKB1NFUlZJTkcQARIPCgtOT1RfU0VSVklORxACEhMKD1NFUlZJQ0'
     'VfVU5LTk9XThAD');
+
+const $core.Map<$core.String, $core.dynamic> HealthServiceBase$json = {
+  '1': 'Health',
+  '2': [
+    {
+      '1': 'Check',
+      '2': '.grpc.health.v1.HealthCheckRequest',
+      '3': '.grpc.health.v1.HealthCheckResponse'
+    },
+    {
+      '1': 'Watch',
+      '2': '.grpc.health.v1.HealthCheckRequest',
+      '3': '.grpc.health.v1.HealthCheckResponse',
+      '6': true
+    },
+  ],
+};
+
+@$core.Deprecated('Use healthServiceDescriptor instead')
+const $core.Map<$core.String, $core.Map<$core.String, $core.dynamic>>
+    HealthServiceBase$messageJson = {
+  '.grpc.health.v1.HealthCheckRequest': HealthCheckRequest$json,
+  '.grpc.health.v1.HealthCheckResponse': HealthCheckResponse$json,
+};
+
+/// Descriptor for `Health`. Decode as a `google.protobuf.ServiceDescriptorProto`.
+final $typed_data.Uint8List healthServiceDescriptor = $convert.base64Decode(
+    'CgZIZWFsdGgSUAoFQ2hlY2sSIi5ncnBjLmhlYWx0aC52MS5IZWFsdGhDaGVja1JlcXVlc3QaIy'
+    '5ncnBjLmhlYWx0aC52MS5IZWFsdGhDaGVja1Jlc3BvbnNlElIKBVdhdGNoEiIuZ3JwYy5oZWFs'
+    'dGgudjEuSGVhbHRoQ2hlY2tSZXF1ZXN0GiMuZ3JwYy5oZWFsdGgudjEuSGVhbHRoQ2hlY2tSZX'
+    'Nwb25zZTAB');

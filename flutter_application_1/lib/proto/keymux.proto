@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package = "GoKeyMux/proto/pb";
+option go_package = "GoKeyMux/proto";
 
 package GoKeyMux;
 
@@ -29,7 +29,40 @@ message keyReturnDebug {
   string timeStamp = 3;
 }
 
+message MouseEvent {
+  enum EventType {
+    UNKNOWN = 0;
+    MOVE = 1;         // 移动 (使用 x, y 作为相对增量)
+    LEFT_DOWN = 2;    // 左键按下 (忽略 x, y)
+    LEFT_UP = 3;      // 左键抬起 (忽略 x, y)
+    RIGHT_DOWN = 4;   // 右键按下 (忽略 x, y)
+    RIGHT_UP = 5;     // 右键抬起 (忽略 x, y)
+    MIDDLE_DOWN = 6;  // 中键按下 (忽略 x, y)
+    MIDDLE_UP = 7;    // 中键抬起 (忽略 x, y)
+    SCROLL = 8;       // 滚轮 (使用 scroll_delta，忽略 x, y)
+  }
+  // 事件类型
+  EventType type = 1;
+
+  // 仅在 type == MOVE 时有效。
+  // 表示鼠标在 X/Y 轴上的相对移动像素量（Delta）。
+  // 对于其他事件类型，此字段应被设为0
+  int32 x = 2;
+  int32 y = 3;
+
+  // 滚轮增量
+  // 仅在 type == SCROLL 时有效。正数向上/向前，负数向下/向后。
+  int32 scroll_delta = 4;
+
+}
+
+message MouseReturn {
+  bool isAllDone = 1;
+  string metaData = 2;
+}
+
 service rpcKeyService {
   rpc keyService (stream keyInput) returns (keyReturn);
   rpc keyServiceDebug (keyInputDebug) returns (keyReturnDebug);
+  rpc MouseService (stream MouseEvent) returns (MouseReturn);
 }

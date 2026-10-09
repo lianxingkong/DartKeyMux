@@ -27,18 +27,27 @@ class FloatButton extends StatelessWidget {
       context: context,
       position: position,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(16),  // 圆角属性
       ),
       elevation: 4,
       constraints: const BoxConstraints(minWidth: menuWidth),
       items: const [
         PopupMenuItem(
           value: 'add_share_template',
-          height: 56,
+          height: 56, // 56
           child: Row(children: [
             Icon(Icons.file_upload_outlined, size: 20),
             SizedBox(width: 8),
             Text('导入模板'),
+          ]),
+        ),
+        PopupMenuItem(
+          value: 'add_mouse_move',
+          height: 56,
+          child: Row(children: [
+            Icon(Icons.file_upload_outlined, size: 20),
+            SizedBox(width: 8),
+            Text('新建鼠标模板'),
           ]),
         ),
         PopupMenuItem(
@@ -60,6 +69,8 @@ class FloatButton extends StatelessWidget {
     } else if (result == 'add_new_template') {
       // ★ 唯一的改动：交给 TemplateService，让它收 draft、写列表、存盘、通知主页
       await TemplateService.instance.addTemplate(context);
+    } else if (result == 'add_mouse_move') {
+      await TemplateService.instance.addMouseMove(context);
     }
   }
 

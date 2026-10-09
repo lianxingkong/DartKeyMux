@@ -1,4 +1,6 @@
 // lib/services/grpc_key_service.dart
+import 'dart:ffi';
+
 import 'package:flutter/foundation.dart';
 
 import 'dart:async';
@@ -16,6 +18,7 @@ class GrpcKeyService {
   rpcKeyServiceClient? _client;
 
   StreamController<keyInput>? _inputController;
+  StreamController<MouseEvent>? _mouseController;
   // 直接持有 ResponseFuture（而不是 then 出来的 Future）→ 会话挂死时能
   // cancel()，不会在 channel 上留僵尸 call
   ResponseFuture<keyReturn>? _sessionCall;
@@ -145,6 +148,26 @@ class GrpcKeyService {
       debugPrint('[${DateTime.now()}] ✅ 已入流: key="$key" pressed=$isPressed');
     } catch (e) {
       debugPrint('入流失败（会话已失效），丢弃按键 $key: $e');
+    }
+  }
+
+  void sendPos({required MouseEvent_EventType type, required int dx, required int dy, required int scrollDelta}){
+    final ctrl = _mouseController;
+    final call = _sessionCall;
+    if (ctrl == null || ctrl.isClosed || call == null || _closing) {
+      debugPrint('会话未开启');
+      return;
+    }
+    try{
+      ctrl.add(
+        MouseEvent()
+          ..type = type
+          ..x = dx
+          ..y = dy
+          ..scrollDelta = scrollDelta
+      );
+    } catch(e){
+      debugPrint('入流失败（会话已失效）');
     }
   }
 

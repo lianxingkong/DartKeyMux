@@ -10,11 +10,16 @@
 // ignore_for_file: deprecated_member_use_from_same_package, library_prefixes
 // ignore_for_file: non_constant_identifier_names, prefer_relative_imports
 
+import 'dart:async' as $async;
 import 'dart:core' as $core;
 
 import 'package:protobuf/protobuf.dart' as $pb;
 
+import 'keymux.pbenum.dart';
+
 export 'package:protobuf/protobuf.dart' show GeneratedMessageGenericExtensions;
+
+export 'keymux.pbenum.dart';
 
 class keyInput extends $pb.GeneratedMessage {
   factory keyInput({
@@ -293,7 +298,7 @@ class keyReturnDebug extends $pb.GeneratedMessage {
       _omitMessageNames ? '' : 'keyReturnDebug',
       package: const $pb.PackageName(_omitMessageNames ? '' : 'GoKeyMux'),
       createEmptyInstance: keyReturnDebug.$_createMessage)
-    ..aOB(1, _omitFieldNames ? '' : 'isFinished')
+    ..aOB(1, _omitFieldNames ? '' : 'isFinished', protoName: 'isFinished')
     ..aOS(2, _omitFieldNames ? '' : 'key')
     ..aOS(3, _omitFieldNames ? '' : 'timeStamp', protoName: 'timeStamp')
     ..hasRequiredFields = false;
@@ -346,6 +351,192 @@ class keyReturnDebug extends $pb.GeneratedMessage {
   $core.bool hasTimeStamp() => $_has(2);
   @$pb.TagNumber(3)
   void clearTimeStamp() => $_clearField(3);
+}
+
+class MouseEvent extends $pb.GeneratedMessage {
+  factory MouseEvent({
+    MouseEvent_EventType? type,
+    $core.int? x,
+    $core.int? y,
+    $core.int? scrollDelta,
+  }) {
+    final result = MouseEvent._();
+    if (type != null) result.type = type;
+    if (x != null) result.x = x;
+    if (y != null) result.y = y;
+    if (scrollDelta != null) result.scrollDelta = scrollDelta;
+    return result;
+  }
+
+  MouseEvent._();
+
+  factory MouseEvent.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      MouseEvent()..mergeFromBuffer(data, registry);
+  factory MouseEvent.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      MouseEvent()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'MouseEvent',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'GoKeyMux'),
+      createEmptyInstance: MouseEvent.$_createMessage)
+    ..aE<MouseEvent_EventType>(1, _omitFieldNames ? '' : 'type',
+        enumValues: MouseEvent_EventType.values)
+    ..aI(2, _omitFieldNames ? '' : 'x')
+    ..aI(3, _omitFieldNames ? '' : 'y')
+    ..aI(4, _omitFieldNames ? '' : 'scrollDelta')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  MouseEvent clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  MouseEvent copyWith(void Function(MouseEvent) updates) =>
+      super.copyWith((message) => updates(message as MouseEvent)) as MouseEvent;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use MouseEvent() / MouseEvent.new instead')
+  static MouseEvent create() => MouseEvent._();
+  static $pb.GeneratedMessage $_createMessage() => MouseEvent._();
+  @$core.override
+  MouseEvent createEmptyInstance() => MouseEvent._();
+  @$core.pragma('dart2js:noInline')
+  static MouseEvent getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<MouseEvent>(MouseEvent.$_createMessage);
+  static MouseEvent? _defaultInstance;
+
+  /// 事件类型
+  @$pb.TagNumber(1)
+  MouseEvent_EventType get type => $_getN(0);
+  @$pb.TagNumber(1)
+  set type(MouseEvent_EventType value) => $_setField(1, value);
+  @$pb.TagNumber(1)
+  $core.bool hasType() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearType() => $_clearField(1);
+
+  /// 仅在 type == MOVE 时有效。
+  /// 表示鼠标在 X/Y 轴上的相对移动像素量（Delta）。
+  /// 对于其他事件类型，此字段应被设为0
+  @$pb.TagNumber(2)
+  $core.int get x => $_getIZ(1);
+  @$pb.TagNumber(2)
+  set x($core.int value) => $_setSignedInt32(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasX() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearX() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.int get y => $_getIZ(2);
+  @$pb.TagNumber(3)
+  set y($core.int value) => $_setSignedInt32(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasY() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearY() => $_clearField(3);
+
+  /// 滚轮增量
+  /// 仅在 type == SCROLL 时有效。正数向上/向前，负数向下/向后。
+  @$pb.TagNumber(4)
+  $core.int get scrollDelta => $_getIZ(3);
+  @$pb.TagNumber(4)
+  set scrollDelta($core.int value) => $_setSignedInt32(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasScrollDelta() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearScrollDelta() => $_clearField(4);
+}
+
+class MouseReturn extends $pb.GeneratedMessage {
+  factory MouseReturn({
+    $core.bool? isAllDone,
+    $core.String? metaData,
+  }) {
+    final result = MouseReturn._();
+    if (isAllDone != null) result.isAllDone = isAllDone;
+    if (metaData != null) result.metaData = metaData;
+    return result;
+  }
+
+  MouseReturn._();
+
+  factory MouseReturn.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      MouseReturn()..mergeFromBuffer(data, registry);
+  factory MouseReturn.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      MouseReturn()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'MouseReturn',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'GoKeyMux'),
+      createEmptyInstance: MouseReturn.$_createMessage)
+    ..aOB(1, _omitFieldNames ? '' : 'isAllDone', protoName: 'isAllDone')
+    ..aOS(2, _omitFieldNames ? '' : 'metaData', protoName: 'metaData')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  MouseReturn clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  MouseReturn copyWith(void Function(MouseReturn) updates) =>
+      super.copyWith((message) => updates(message as MouseReturn))
+          as MouseReturn;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use MouseReturn() / MouseReturn.new instead')
+  static MouseReturn create() => MouseReturn._();
+  static $pb.GeneratedMessage $_createMessage() => MouseReturn._();
+  @$core.override
+  MouseReturn createEmptyInstance() => MouseReturn._();
+  @$core.pragma('dart2js:noInline')
+  static MouseReturn getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<MouseReturn>(
+          MouseReturn.$_createMessage);
+  static MouseReturn? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.bool get isAllDone => $_getBF(0);
+  @$pb.TagNumber(1)
+  set isAllDone($core.bool value) => $_setBool(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasIsAllDone() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearIsAllDone() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get metaData => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set metaData($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasMetaData() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearMetaData() => $_clearField(2);
+}
+
+class rpcKeyServiceApi {
+  final $pb.RpcClient _client;
+
+  rpcKeyServiceApi(this._client);
+
+  $async.Future<keyReturn> keyService(
+          $pb.ClientContext? ctx, keyInput request) =>
+      _client.invoke<keyReturn>(
+          ctx, 'rpcKeyService', 'keyService', request, keyReturn());
+  $async.Future<keyReturnDebug> keyServiceDebug(
+          $pb.ClientContext? ctx, keyInputDebug request) =>
+      _client.invoke<keyReturnDebug>(
+          ctx, 'rpcKeyService', 'keyServiceDebug', request, keyReturnDebug());
+  $async.Future<MouseReturn> mouseService(
+          $pb.ClientContext? ctx, MouseEvent request) =>
+      _client.invoke<MouseReturn>(
+          ctx, 'rpcKeyService', 'MouseService', request, MouseReturn());
 }
 
 const $core.bool _omitFieldNames =

@@ -10,6 +10,7 @@
 // ignore_for_file: deprecated_member_use_from_same_package, library_prefixes
 // ignore_for_file: non_constant_identifier_names, prefer_relative_imports
 
+import 'dart:async' as $async;
 import 'dart:core' as $core;
 
 import 'package:protobuf/protobuf.dart' as $pb;
@@ -134,6 +135,21 @@ class HealthCheckResponse extends $pb.GeneratedMessage {
   $core.bool hasStatus() => $_has(0);
   @$pb.TagNumber(1)
   void clearStatus() => $_clearField(1);
+}
+
+class HealthApi {
+  final $pb.RpcClient _client;
+
+  HealthApi(this._client);
+
+  $async.Future<HealthCheckResponse> check_(
+          $pb.ClientContext? ctx, HealthCheckRequest request) =>
+      _client.invoke<HealthCheckResponse>(
+          ctx, 'Health', 'Check', request, HealthCheckResponse());
+  $async.Future<HealthCheckResponse> watch(
+          $pb.ClientContext? ctx, HealthCheckRequest request) =>
+      _client.invoke<HealthCheckResponse>(
+          ctx, 'Health', 'Watch', request, HealthCheckResponse());
 }
 
 const $core.bool _omitFieldNames =

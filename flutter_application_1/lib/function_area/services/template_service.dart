@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 
 import 'package:flutter_application_1/function_area/floating_window/create_template_page.dart';
+import 'package:flutter_application_1/function_area/floating_window/create_mouse_move_page.dart';
 import '../all_template/base/template_document.dart';
 
 import '../services/template_codec.dart';
@@ -99,7 +100,7 @@ class TemplateService extends ChangeNotifier {
         TemplateDraft(name: raw, widgets: const []);
   }
 
-  /// 新建：不带 initial，保存后追加到最前面
+  /// 新建模板：不带 initial，保存后追加到最前面
   Future<void> addTemplate(BuildContext context) async {
     final draft = await Navigator.push<TemplateDraft>(
       context,
@@ -116,6 +117,25 @@ class TemplateService extends ChangeNotifier {
     notifyListeners();
     await _persist();
     debugPrint('【新建】已保存: ${draft.name}');
+  }
+
+  // 新建鼠标移动
+  Future<void> addMouseMove(BuildContext context) async {
+      final draftM = await Navigator.push<TemplateDraft>(
+      context,
+      MaterialPageRoute(builder: (_) => const CreateMouseMovePage()),
+    );
+    if (draftM == null) return;
+
+    templates.insert(0, jsonEncode(draftM.toJson())); // 新模板排最前
+    // 插入导致所有旧模板下标 +1，自启动下标也需同步
+    if (_autoStartIndex != null) {
+      _autoStartIndex = _autoStartIndex! + 1;
+      await _persistAutoStart();
+    }
+    notifyListeners();
+    await _persist();
+    debugPrint('【新建鼠标移动】已保存: ${draftM.name}');
   }
 
   /// 编辑：传入旧草稿回填，保存后覆盖原位置
