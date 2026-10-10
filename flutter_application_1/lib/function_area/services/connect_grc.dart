@@ -131,6 +131,7 @@ class GrpcKeyService {
         }));
   }
 
+  // 传输点击事件参数
   void sendKey({required String key, required bool isRune, required bool isPressed}) {
     final ctrl = _inputController;
     final call = _sessionCall;
@@ -151,6 +152,7 @@ class GrpcKeyService {
     }
   }
 
+  // 传输鼠标移动参数
   void sendPos({required MouseEvent_EventType type, required int dx, required int dy, required int scrollDelta}){
     final ctrl = _mouseController;
     final call = _sessionCall;

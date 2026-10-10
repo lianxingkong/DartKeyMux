@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:flutter_application_1/function_area/floating_window/float_button.dart';
 import 'package:flutter_application_1/function_area/sidebar/main_sidebar_menu.dart';
@@ -10,6 +11,11 @@ import 'package:flutter_application_1/function_area/all_template/player_template
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  SystemChrome.setEnabledSystemUIMode(
+    SystemUiMode.manual,
+    overlays: [SystemUiOverlay.top],
+  );  // 关闭部分手机底部导航栏
 
   GrpcKeyService.instance.init(
     host: '127.0.0.1',   // ← 改成你后端电脑的局域网 IP
