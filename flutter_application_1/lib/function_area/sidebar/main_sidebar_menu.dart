@@ -1,9 +1,16 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_application_1/function_area/setting/basic_setting_page.dart';
 import 'package:flutter_application_1/function_area/services/template_service.dart';
 
-
+/// ─────────────────────────────────────────────
+/// 主侧边栏菜单
+/// ─────────────────────────────────────────────
 class MainSidebarMenu extends StatefulWidget {
   const MainSidebarMenu({super.key});
 
@@ -12,73 +19,278 @@ class MainSidebarMenu extends StatefulWidget {
 }
 
 class _MainSidebarMenuState extends State<MainSidebarMenu> {
+  static const _prefAvatarPath = 'avatar_path';
+  static const _prefUserName = 'user_name';
+
+  String? _avatarPath;
+  String _userName = '用户名';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPrefs();
+  }
+
+  // ── 读取本地保存 ──
+  Future<void> _loadPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _avatarPath = prefs.getString(_prefAvatarPath);
+      _userName = prefs.getString(_prefUserName) ?? '用户名';
+    });
+  }
+
+  // ── 写入本地保存 ──
+  Future<void> _savePrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (_avatarPath != null && _avatarPath!.isNotEmpty) {
+      await prefs.setString(_prefAvatarPath, _avatarPath!);
+    } else {
+      await prefs.remove(_prefAvatarPath);
+    }
+    await prefs.setString(_prefUserName, _userName);
+  }
+
+  // ─────────────────────────────────────────────
+  /// 点击头像：打开系统相册选图
+  // ─────────────────────────────────────────────
+  Future<void> _pickAvatar() async {
+    final picker = ImagePicker();
+    final XFile? picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 512,
+      maxHeight: 512,
+      imageQuality: 85,
+    );
+    if (picked == null) return; // 用户取消
+
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+
+      // ★ 先删除旧头像文件（现在是 await 异步调用）
+      await _deleteOldAvatarFile(appDir.path);
+
+      final newFile = await File(picked.path).copy(
+        '${appDir.path}/avatar_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+
+      setState(() => _avatarPath = newFile.path);
+      await _savePrefs();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('保存头像失败: $e')),
+        );
+      }
+    }
+  }
+
+  /// 删除旧的头像文件（仅删除应用私有目录内的，防止误删其他文件）
+  Future<void> _deleteOldAvatarFile(String appDirPath) async {
+    if (_avatarPath == null || _avatarPath!.isEmpty) return;
+    try {
+      final f = File(_avatarPath!);
+      // 确认文件在应用目录内才删除
+      if (f.existsSync() && f.path.startsWith(appDirPath)) {
+        await f.delete();
+      }
+    } catch (_) {
+      // 删除失败不影响主流程
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  /// 编辑用户名
+  // ─────────────────────────────────────────────
+  Future<void> _editUserName() async {
+    final controller = TextEditingController(text: _userName);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('修改用户名'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 12,
+          decoration: const InputDecoration(hintText: '输入用户名'),
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null || result.isEmpty) return;
+    setState(() => _userName = result);
+    await _savePrefs();
+  }
+
+  // ─────────────────────────────────────────────
+  /// 头像（无图时显示占位图标）
+  // ─────────────────────────────────────────────
+  Widget _buildAvatar() {
+    if (_avatarPath != null &&
+        _avatarPath!.isNotEmpty &&
+        File(_avatarPath!).existsSync()) {
+      return CircleAvatar(
+        radius: 36,
+        backgroundImage: FileImage(File(_avatarPath!)),
+      );
+    }
+    return const CircleAvatar(
+      radius: 36,
+      backgroundColor: Colors.white24,
+      child: Icon(Icons.person, size: 36, color: Colors.white),
+    );
+  }
+
+  /// 头像 + 右下角编辑徽标
+  Widget _buildAvatarWithBadge() {
+    return GestureDetector(
+      onTap: _pickAvatar,
+      child: SizedBox(
+        width: 72,
+        height: 72,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            _buildAvatar(),
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: Container(
+                width: 22,
+                height: 22,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.edit, size: 13, color: Colors.blue),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Drawer(
       backgroundColor: const Color.fromARGB(255, 210, 243, 210),
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              DrawerHeader(
-                child: Icon(
-                  Icons.account_circle_outlined,
-                  size:40
-                )
-              ),
-              ListTile(
-                leading: Icon(Icons.home),
-                title: Text("主 页"),
-              ),
-              ListTile(
-                leading: const Icon(Icons.flash_on),
-                title: const Text("自启动指定模板"),
-                trailing: ListenableBuilder(
-                  listenable: TemplateService.instance,
-                  builder: (context, _) {
-                    final masterOn = TemplateService.instance.autoStartMasterEnabled;
-                    // 只有设置了自启动模板时总开关才有实际意义，用副文本提示当前状态
-                    final hasTarget = TemplateService.instance.autoStartIndex != null;
-                    return Row(
-                      mainAxisSize: MainAxisSize.min,
+      child: SingleChildScrollView(
+        child: Column(
+          children: [
+            // ─────────────────────────────────────────────
+            // ★ 自绘头部：高度自己说了算，彻底解决溢出问题
+            // （原 DrawerHeader 高度固定 168dp，内容刚好超 1px 导致溢出）
+            // ─────────────────────────────────────────────
+            Container(
+              width: double.infinity,
+              height: 180,
+              // 与 Drawer 背景同色，视觉上无缝衔接
+              color: const Color.fromARGB(255, 210, 243, 210),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildAvatarWithBadge(),
+                  const SizedBox(height: 14),
+                  // 用户名可点击修改
+                  GestureDetector(
+                    onTap: _editUserName,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min, // Row 收缩到内容宽度，实现居中
                       children: [
-                        if (hasTarget)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 4),
-                            child: Text(
-                              TemplateService.instance.draftAt(TemplateService.instance.autoStartIndex!).name,
-                              style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
-                              overflow: TextOverflow.ellipsis,
+                        Flexible(
+                          child: Text(
+                            _userName,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              // 浅绿背景上白色看不清，改为深绿色
+                              color: Color.fromARGB(255, 27, 94, 32),
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                        Switch(
-                          value: masterOn,
-                          onChanged: (value) {
-                            TemplateService.instance.setAutoStartMaster(value);
-                          },
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(
+                          Icons.edit,
+                          size: 14,
+                          color: Color.fromARGB(255, 27, 94, 32),
                         ),
                       ],
-                    );
-                  },
-                ),
+                    ),
+                  ),
+                ],
               ),
-              InkWell(
-                onTap: () {
-                  // 先关闭抽屉，再跳转，否则返回时抽屉还是打开的
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const SettingPage()),
+            ),
+            // ── 自启动模板开关 ──
+            ListTile(
+              leading: const Icon(Icons.flash_on),
+              title: const Text("自启动指定模板"),
+              trailing: ListenableBuilder(
+                listenable: TemplateService.instance,
+                builder: (context, _) {
+                  final masterOn =
+                      TemplateService.instance.autoStartMasterEnabled;
+                  final hasTarget =
+                      TemplateService.instance.autoStartIndex != null;
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (hasTarget)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: Text(
+                            TemplateService.instance
+                                .draftAt(
+                                    TemplateService.instance.autoStartIndex!)
+                                .name,
+                            style: TextStyle(
+                                fontSize: 11, color: Colors.grey.shade700),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      Switch(
+                        value: masterOn,
+                        onChanged: (value) {
+                          TemplateService.instance.setAutoStartMaster(value);
+                        },
+                      ),
+                    ],
                   );
                 },
-                child: ListTile(
-                  leading: Icon(Icons.settings),
-                  title: Text("设置"),
-                ),
               ),
-            ],
-          ),
+            ),
+
+            // ── 设置入口 ──
+            InkWell(
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => const SettingPage()),
+                );
+              },
+              child: const ListTile(
+                leading: Icon(Icons.settings),
+                title: Text("设置"),
+              ),
+            ),
+          ],
         ),
+      ),
     );
   }
 }

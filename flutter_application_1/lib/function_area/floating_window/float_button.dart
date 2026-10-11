@@ -45,7 +45,7 @@ class FloatButton extends StatelessWidget {
           value: 'add_mouse_move',
           height: 56,
           child: Row(children: [
-            Icon(Icons.file_upload_outlined, size: 20),
+            Icon(Icons.add_circle_outline_sharp, size: 20),
             SizedBox(width: 8),
             Text('新建鼠标模板'),
           ]),

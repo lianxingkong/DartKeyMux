@@ -102,13 +102,13 @@ class TemplateService extends ChangeNotifier {
 
   /// 新建模板：不带 initial，保存后追加到最前面
   Future<void> addTemplate(BuildContext context) async {
-    final draft = await Navigator.push<TemplateDraft>(
+    final drafT = await Navigator.push<TemplateDraft>(
       context,
       MaterialPageRoute(builder: (_) => const CreateTemplatePage()),
     );
-    if (draft == null) return;
+    if (drafT == null) return;
 
-    templates.insert(0, jsonEncode(draft.toJson())); // 新模板排最前
+    templates.insert(0, jsonEncode(drafT.toJson())); // 新模板排最前
     // 插入导致所有旧模板下标 +1，自启动下标也需同步
     if (_autoStartIndex != null) {
       _autoStartIndex = _autoStartIndex! + 1;
@@ -116,12 +116,12 @@ class TemplateService extends ChangeNotifier {
     }
     notifyListeners();
     await _persist();
-    debugPrint('【新建】已保存: ${draft.name}');
+    debugPrint('【新建】已保存: ${drafT.name}');
   }
 
   // 新建鼠标移动
   Future<void> addMouseMove(BuildContext context) async {
-      final draftM = await Navigator.push<TemplateDraft>(
+    final draftM = await Navigator.push<TemplateDraft>(
       context,
       MaterialPageRoute(builder: (_) => const CreateMouseMovePage()),
     );
@@ -187,8 +187,28 @@ class TemplateService extends ChangeNotifier {
 
 
   /// 分享：导出紧凑码 → 复制剪贴板（如需系统分享面板，接 share_plus 即可）
+  /// ★ 鼠标模板不支持分享（无组件结构，分享码无意义）
   Future<void> shareTemplate(BuildContext context, int index) async {
-    final code = TemplateCodec.export(draftAt(index));
+    final draft = draftAt(index);
+    if (draft.isMouse) {
+      if (!context.mounted) return;
+      await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('无法分享'),
+          content: const Text('鼠标触控模板暂不支持分享功能。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('好的'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final code = TemplateCodec.export(draft);
     await Clipboard.setData(ClipboardData(text: code));
     debugPrint('已复制分享码（${code.length} 字符）: $code');
 
