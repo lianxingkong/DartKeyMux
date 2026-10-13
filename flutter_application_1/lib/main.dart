@@ -7,6 +7,7 @@ import 'package:flutter_application_1/function_area/home_page_view/choose_templa
 import 'package:flutter_application_1/function_area/services/template_service.dart';
 import 'package:flutter_application_1/function_area/services/connect_grc.dart';
 import 'package:flutter_application_1/function_area/all_template/player_template/custom_play_page.dart';
+import 'package:flutter_application_1/function_area/all_template/player_template/custom_mouse_play_page.dart';
 
 
 Future<void> main() async {
@@ -67,10 +68,12 @@ class __MainInterfaceState extends State<_MainInterface> {
 
     _autoStartHandled = true;
     final draft = service.draftAt(idx);
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => CustomPlayPage(draft: draft)),
-    );
+    // ★ 按模板类型路由到正确的播放页
+    if (draft.isMouse) {
+      openCustomMousePlayPage(context, draft);
+    } else {
+      openCustomPlayPage(context, draft);
+    }
   }
 
   @override
@@ -124,7 +127,10 @@ class __MainInterfaceState extends State<_MainInterface> {
             ),
         drawer: const MainSidebarMenu(),  // 侧边栏菜单
         body: const ChooseTemplate(),   // 主界面模板展示选择
-        floatingActionButton: const FloatButton(),  // 悬浮控件
+        floatingActionButton: Padding(    // 悬浮窗控件
+          padding: EdgeInsets.only(bottom: 40, left: 14),
+          child: const FloatButton()
+        )
     );
   }
 }

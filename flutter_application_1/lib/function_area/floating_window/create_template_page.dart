@@ -315,32 +315,35 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
         color: Colors.blueGrey.shade900,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            _tb(Icons.crop_square, '方', () => _add(KShape.square)),
-            _tb(Icons.circle_outlined, '圆', () => _add(KShape.circle)),
-            const SizedBox(width: 6),
-            // ★ 缩放按钮
-            _tb(Icons.zoom_out, '缩小', () {
-              setState(() => _canvasScale = (_canvasScale - 0.15).clamp(0.3, 3.0));
-            }),
-            Text(
-              '${(_canvasScale * 100).round()}%',
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
-            ),
-            _tb(Icons.zoom_in, '放大', () {
-              setState(() => _canvasScale = (_canvasScale + 0.15).clamp(0.3, 3.0));
-            }),
-            const SizedBox(width: 6),
-            _tb(Icons.tune, '属性', _openProps, enabled: hasSel),
-            _tb(Icons.copy_all_outlined, '复制', _duplicate, enabled: hasSel),
-            _tb(Icons.delete_outline, '删除', _delete, enabled: hasSel, red: true),
-            const SizedBox(width: 10),
-            FilledButton.icon(
-              onPressed: _save,
-              icon: const Icon(Icons.check),
-              label: const Text('保存'),
-            ),
-          ]),
+          child: SingleChildScrollView(   // 横向滑动来适应横竖屏以及屏幕尺寸不同带来的越界
+            scrollDirection: Axis.horizontal,
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              _tb(Icons.crop_square, '方', () => _add(KShape.square)),
+              _tb(Icons.circle_outlined, '圆', () => _add(KShape.circle)),
+              const SizedBox(width: 6),
+              // ★ 缩放按钮
+              _tb(Icons.zoom_out, '缩小', () {
+                setState(() => _canvasScale = (_canvasScale - 0.15).clamp(0.3, 3.0));
+              }),
+              Text(
+                '${(_canvasScale * 100).round()}%',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+              _tb(Icons.zoom_in, '放大', () {
+                setState(() => _canvasScale = (_canvasScale + 0.15).clamp(0.3, 3.0));
+              }),
+              const SizedBox(width: 6),
+              _tb(Icons.tune, '属性', _openProps, enabled: hasSel),
+              _tb(Icons.copy_all_outlined, '复制', _duplicate, enabled: hasSel),
+              _tb(Icons.delete_outline, '删除', _delete, enabled: hasSel, red: true),
+              const SizedBox(width: 10),
+              FilledButton.icon(
+                onPressed: _save,
+                icon: const Icon(Icons.check),
+                label: const Text('保存'),
+              ),
+            ]),
+          ),
         ),
       ),
     );

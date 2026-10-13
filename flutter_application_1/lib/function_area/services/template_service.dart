@@ -57,7 +57,7 @@ class TemplateService extends ChangeNotifier {
 
       notifyListeners();
     } catch (e) {
-      debugPrint('【读档】异常: $e');
+      // debugPrint('【读档】异常: $e');
       _loaded = false; // 失败了允许下次重试
     }
   }
@@ -81,9 +81,9 @@ class TemplateService extends ChangeNotifier {
         await prefs.remove(_storageKeyAutoStartIndex);
       }
       await prefs.setBool(_storageKeyAutoStartMaster, _autoStartMasterEnabled);
-      debugPrint('【存盘-自启动】index=$_autoStartIndex master=$_autoStartMasterEnabled');
+      // debugPrint('【存盘-自启动】index=$_autoStartIndex master=$_autoStartMasterEnabled');
     } catch (e) {
-      debugPrint('【存盘-自启动】异常: $e');
+      // debugPrint('【存盘-自启动】异常: $e');
     }
   }
 
@@ -100,7 +100,7 @@ class TemplateService extends ChangeNotifier {
         TemplateDraft(name: raw, widgets: const []);
   }
 
-  /// 新建模板：不带 initial，保存后追加到最前面
+  /// 新建键盘模板：不带 initial，保存后追加到最前面
   Future<void> addTemplate(BuildContext context) async {
     final drafT = await Navigator.push<TemplateDraft>(
       context,
@@ -119,7 +119,7 @@ class TemplateService extends ChangeNotifier {
     debugPrint('【新建】已保存: ${drafT.name}');
   }
 
-  // 新建鼠标移动
+  // 新建鼠标模板
   Future<void> addMouseMove(BuildContext context) async {
     final draftM = await Navigator.push<TemplateDraft>(
       context,
@@ -135,7 +135,7 @@ class TemplateService extends ChangeNotifier {
     }
     notifyListeners();
     await _persist();
-    debugPrint('【新建鼠标移动】已保存: ${draftM.name}');
+    // debugPrint('【新建鼠标移动】已保存: ${draftM.name}');
   }
 
   /// 编辑：传入旧草稿回填，保存后覆盖原位置
@@ -249,15 +249,38 @@ class TemplateService extends ChangeNotifier {
   }
 
 
+  /// 一键置顶：将模板移到列表最前面，永久性变更，已在最顶（index == 0）或越界时无操作。
+  Future<void> pinToTop(int index) async {
+    if (index <= 0 || index >= templates.length) return;
+
+    final item = templates.removeAt(index);
+    templates.insert(0, item);
+
+    // 同步自启动下标
+    if (_autoStartIndex == index) {
+      // 被置顶的恰好是自启动模板 → 跟随到 0
+      _autoStartIndex = 0;
+    } else if (_autoStartIndex != null && _autoStartIndex! < index) {
+      // 原在置顶模板之前的项被向后挤了一位
+      _autoStartIndex = _autoStartIndex! + 1;
+    }
+    // _autoStartIndex > index 时不受影响（置顶项后面的模板位置不变）
+
+    notifyListeners();
+    await _persist();
+    await _persistAutoStart();
+  }
+
+
   /// 自启动：同一模板再次点击 = 取消；不同模板 = 转移自启动属性
   Future<void> selfstartingTemlate(int index) async {
     if (_autoStartIndex == index) {
       _autoStartIndex = null;
-      debugPrint('自启动已取消：${draftAt(index).name}');
+      // debugPrint('自启动已取消：${draftAt(index).name}');
     } else {
       final prev = _autoStartIndex != null ? '（原：${draftAt(_autoStartIndex!).name}）' : '';
       _autoStartIndex = index;
-      debugPrint('自启动已设置：${draftAt(index).name} $prev');
+      // debugPrint('自启动已设置：${draftAt(index).name} $prev');
     }
     notifyListeners();
     await _persistAutoStart();

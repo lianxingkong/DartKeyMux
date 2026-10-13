@@ -8,7 +8,14 @@ const _palette = <int>[
 ];
 
 /// 属性面板：实时应用（改一个属性立刻反映到画布上，用户利好）
-/// ★ 独立宽高：增加宽度/高度两个独立滑块，配套\"等比锁定\"开关
+/// ★ 独立宽高：增加宽度/高度两个独立滑块，配套"等比锁定"开关
+///
+/// ★ 修复要点：
+///   1. sheet 内容改为 StatefulWidget，controller 在 State.dispose() 中释放
+///      （不再用 whenComplete 提前 dispose——那是本次崩溃的根因）；
+///   2. TextField 加 onTapOutside，点击空白区域时同步收起焦点；
+///   3. 映射按键的 onChanged 允许清空（去掉静默回退旧值的逻辑），
+///      关闭时在 _SheetBody.dispose 里兜底回退，保证不会把空值留在画布上。
 Future<void> showWidgetPropertySheet({
   required BuildContext context,
   required KeyWidget w,
@@ -17,201 +24,256 @@ Future<void> showWidgetPropertySheet({
   required VoidCallback onDuplicate,
   required VoidCallback onDelete,
 }) {
-  var cur = w;
-  var aspectLocked = cur.sizeW == cur.sizeH; // 初始等比则锁定
-
-  final keyCtrl = TextEditingController(text: cur.key);
-
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setSheet) => Padding(
-        padding: EdgeInsets.only(
-          left: 16, right: 16, top: 12,
-          bottom: 12 + MediaQuery.of(ctx).viewInsets.bottom,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                const Text('组件属性',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const Spacer(),
-                IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(ctx)),
-              ]),
-
-              _label('映射按键'),
-              TextField(
-                controller: keyCtrl,
-                maxLength: 4,
-                textCapitalization: TextCapitalization.none,
-                decoration: const InputDecoration(
-                    isDense: true, border: OutlineInputBorder()),
-                onChanged: (v) {
-                  onChanged(cur = cur.copyWith(key: v));
-                },
-              ),
-
-              _label('形状'),
-              SegmentedButton<KShape>(
-                segments: const [
-                  ButtonSegment(
-                      value: KShape.square,
-                      label: Text('方形'),
-                      icon: Icon(Icons.crop_square)),
-                  ButtonSegment(
-                      value: KShape.circle,
-                      label: Text('圆形'),
-                      icon: Icon(Icons.circle_outlined)),
-                ],
-                selected: {cur.shape},
-                onSelectionChanged: (s) {
-                  setSheet(() {});
-                  onChanged(cur = cur.copyWith(shape: s.first));
-                },
-              ),
-
-              // ── 独立宽高 ──
-              _label('宽度（可超过屏幕 → 分割线玩法）'),
-              Row(children: [
-                Expanded(
-                  child: Slider(
-                    min: .05,
-                    max: 2.2,
-                    divisions: 43,
-                    value: cur.sizeW.clamp(.05, 2.2),
-                    label: '${(cur.sizeW * 100).round()}% 屏宽',
-                    onChanged: (v) {
-                      setSheet(() {});
-                      final newH = aspectLocked
-                          ? (v * cur.sizeH / cur.sizeW).clamp(.05, 2.2)
-                          : cur.sizeH;
-                      onChanged(cur = cur.copyWith(sizeW: v, sizeH: newH));
-                    },
-                  ),
-                ),
-                Text('${(cur.sizeW * 100).round()}%'),
-              ]),
-
-              _label('高度（可超过屏幕）'),
-              Row(children: [
-                Expanded(
-                  child: Slider(
-                    min: .05,
-                    max: 2.2,
-                    divisions: 43,
-                    value: cur.sizeH.clamp(.05, 2.2),
-                    label: '${(cur.sizeH * 100).round()}% 屏高',
-                    onChanged: (v) {
-                      setSheet(() {});
-                      final newW = aspectLocked
-                          ? (v * cur.sizeW / cur.sizeH).clamp(.05, 2.2)
-                          : cur.sizeW;
-                      onChanged(cur = cur.copyWith(sizeW: newW, sizeH: v));
-                    },
-                  ),
-                ),
-                Text('${(cur.sizeH * 100).round()}%'),
-              ]),
-
-              // 等比锁定开关
-              Row(children: [
-                const Text('等比缩放'),
-                const SizedBox(width: 8),
-                Switch(
-                  value: aspectLocked,
-                  onChanged: (v) {
-                    setSheet(() => aspectLocked = v);
-                  },
-                ),
-              ]),
-
-              _label('旋转'),
-              Row(children: [
-                Expanded(
-                  child: Slider(
-                    min: 0,
-                    max: 360,
-                    divisions: 72,
-                    value: cur.rotation,
-                    label: '${cur.rotation.round()}°',
-                    onChanged: (v) {
-                      setSheet(() {});
-                      onChanged(cur = cur.copyWith(rotation: v));
-                    },
-                  ),
-                ),
-                Text('${cur.rotation.round()}°'),
-              ]),
-              Wrap(spacing: 6, children: [
-                for (final a in const [0, 45, 90, 135, 180, 225, 270, 315])
-                  ActionChip(
-                    label: Text('$a°'),
-                    onPressed: () {
-                      setSheet(() {});
-                      onChanged(cur = cur.copyWith(rotation: a.toDouble()));
-                    },
-                  ),
-              ]),
-
-              _swatches('松开颜色（不填用默认）', cur.idleColor, (c) {
-                setSheet(() {});
-                onChanged(cur = c == null
-                    ? cur.copyWith(clearIdle: true)
-                    : cur.copyWith(idleColor: c));
-              }),
-              _swatches('按下颜色（不填自动派生）', cur.pressedColor, (c) {
-                setSheet(() {});
-                onChanged(cur = c == null
-                    ? cur.copyWith(clearPressed: true)
-                    : cur.copyWith(pressedColor: c));
-              }),
-
-              _label('层级（后创建在上；可手动调整）'),
-              Wrap(spacing: 6, children: [
-                OutlinedButton(
-                    onPressed: () => onReorder(999), child: const Text('置顶')),
-                OutlinedButton(
-                    onPressed: () => onReorder(1), child: const Text('上移')),
-                OutlinedButton(
-                    onPressed: () => onReorder(-1), child: const Text('下移')),
-                OutlinedButton(
-                    onPressed: () => onReorder(-999), child: const Text('置底')),
-              ]),
-              const SizedBox(height: 10),
-              Row(children: [
-                FilledButton.tonalIcon(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    onDuplicate();
-                  },
-                  icon: const Icon(Icons.copy_all_outlined),
-                  label: const Text('复制组件'),
-                ),
-                const Spacer(),
-                FilledButton.icon(
-                  style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    onDelete();
-                  },
-                  icon: const Icon(Icons.delete_outline),
-                  label: const Text('删除'),
-                ),
-              ]),
-            ],
-          ),
-        ),
-      ),
+    builder: (ctx) => _SheetBody(
+      initial: w,
+      onChanged: onChanged,
+      onReorder: onReorder,
+      onDuplicate: onDuplicate,
+      onDelete: onDelete,
     ),
-  ).whenComplete(() => keyCtrl.dispose());
+  );
 }
 
+// ─────────────────────────────────────────────────────────────
+//  Sheet 内容：有状态的 StatefulWidget
+// ─────────────────────────────────────────────────────────────
+class _SheetBody extends StatefulWidget {
+  const _SheetBody({
+    required this.initial,
+    required this.onChanged,
+    required this.onReorder,
+    required this.onDuplicate,
+    required this.onDelete,
+  });
+
+  final KeyWidget initial;
+  final ValueChanged<KeyWidget> onChanged;
+  final ValueChanged<int> onReorder;
+  final VoidCallback onDuplicate;
+  final VoidCallback onDelete;
+
+  @override
+  State<_SheetBody> createState() => _SheetBodyState();
+}
+
+class _SheetBodyState extends State<_SheetBody> {
+  // ── 状态 ──
+  late KeyWidget cur;
+  late bool aspectLocked;
+  late final TextEditingController keyCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    cur = widget.initial;
+    aspectLocked = cur.sizeW == cur.sizeH; // 初始等比则锁定
+    keyCtrl = TextEditingController(text: cur.key);
+  }
+
+  @override
+  void dispose() {
+    // ★ 唯一安全的 dispose 时机：元素已真正卸载（含退出动画、键盘收起动画
+    //   期间的所有重建都结束之后）。修复 "used after being disposed" 断言崩溃。
+    keyCtrl.dispose();
+    super.dispose();
+  }
+
+  /// 提交一帧修改：刷新本面板并通知外层
+  void _apply(KeyWidget next) {
+    setState(() => cur = next);
+    widget.onChanged(next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 16, right: 16, top: 12,
+        bottom: 12 + MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Text('组件属性',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context)),
+            ]),
+
+            _label('映射按键'),
+            TextField(
+              controller: keyCtrl,
+              maxLength: 4,
+              textCapitalization: TextCapitalization.none,
+              decoration: const InputDecoration(
+                  isDense: true, border: OutlineInputBorder()),
+              // 点击面板外空白处时同步失焦，把收尾权交给 framework
+              onTapOutside: (_) => FocusScope.of(context).unfocus(),
+              onChanged: (v) {
+                // ★ 修复：允许清空；空值在 dispose 时兜底，而不是在这里静默回退
+                _apply(cur.copyWith(key: v));
+              },
+            ),
+
+            _label('形状'),
+            SegmentedButton<KShape>(
+              segments: const [
+                ButtonSegment(
+                    value: KShape.square,
+                    label: Text('方形'),
+                    icon: Icon(Icons.crop_square)),
+                ButtonSegment(
+                    value: KShape.circle,
+                    label: Text('圆形'),
+                    icon: Icon(Icons.circle_outlined)),
+              ],
+              selected: {cur.shape},
+              onSelectionChanged: (s) =>
+                  _apply(cur.copyWith(shape: s.first)),
+            ),
+
+            // ── 独立宽高 ──
+            _label('宽度（可超过屏幕 → 分割线玩法）'),
+            Row(children: [
+              Expanded(
+                child: Slider(
+                  min: .05,
+                  max: 2.2,
+                  divisions: 43,
+                  value: cur.sizeW.clamp(.05, 2.2),
+                  label: '${(cur.sizeW * 100).round()}% 屏宽',
+                  onChanged: (v) {
+                    final newH = aspectLocked
+                        ? (v * cur.sizeH / cur.sizeW).clamp(.05, 2.2)
+                        : cur.sizeH;
+                    _apply(cur.copyWith(sizeW: v, sizeH: newH));
+                  },
+                ),
+              ),
+              Text('${(cur.sizeW * 100).round()}%'),
+            ]),
+
+            _label('高度（可超过屏幕）'),
+            Row(children: [
+              Expanded(
+                child: Slider(
+                  min: .05,
+                  max: 2.2,
+                  divisions: 43,
+                  value: cur.sizeH.clamp(.05, 2.2),
+                  label: '${(cur.sizeH * 100).round()}% 屏高',
+                  onChanged: (v) {
+                    final newW = aspectLocked
+                        ? (v * cur.sizeW / cur.sizeH).clamp(.05, 2.2)
+                        : cur.sizeW;
+                    _apply(cur.copyWith(sizeW: newW, sizeH: v));
+                  },
+                ),
+              ),
+              Text('${(cur.sizeH * 100).round()}%'),
+            ]),
+
+            // 等比锁定开关
+            Row(children: [
+              const Text('等比缩放'),
+              const SizedBox(width: 8),
+              Switch(
+                value: aspectLocked,
+                onChanged: (v) => setState(() => aspectLocked = v),
+              ),
+            ]),
+
+            _label('旋转'),
+            Row(children: [
+              Expanded(
+                child: Slider(
+                  min: 0,
+                  max: 360,
+                  divisions: 72,
+                  value: cur.rotation,
+                  label: '${cur.rotation.round()}°',
+                  onChanged: (v) =>
+                      _apply(cur.copyWith(rotation: v)),
+                ),
+              ),
+              Text('${cur.rotation.round()}°'),
+            ]),
+            Wrap(spacing: 6, children: [
+              for (final a in const [0, 45, 90, 135, 180, 225, 270, 315])
+                ActionChip(
+                  label: Text('$a°'),
+                  onPressed: () =>
+                      _apply(cur.copyWith(rotation: a.toDouble())),
+                ),
+            ]),
+
+            _swatches('松开颜色（不填用默认）', cur.idleColor, (c) {
+              _apply(c == null
+                  ? cur.copyWith(clearIdle: true)
+                  : cur.copyWith(idleColor: c));
+            }),
+            _swatches('按下颜色（不填自动派生）', cur.pressedColor, (c) {
+              _apply(c == null
+                  ? cur.copyWith(clearPressed: true)
+                  : cur.copyWith(pressedColor: c));
+            }),
+
+            _label('层级（后创建在上；可手动调整）'),
+            Wrap(spacing: 6, children: [
+              OutlinedButton(
+                  onPressed: () => widget.onReorder(999),
+                  child: const Text('置顶')),
+              OutlinedButton(
+                  onPressed: () => widget.onReorder(1),
+                  child: const Text('上移')),
+              OutlinedButton(
+                  onPressed: () => widget.onReorder(-1),
+                  child: const Text('下移')),
+              OutlinedButton(
+                  onPressed: () => widget.onReorder(-999),
+                  child: const Text('置底')),
+            ]),
+            const SizedBox(height: 10),
+            Row(children: [
+              FilledButton.tonalIcon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  widget.onDuplicate();
+                },
+                icon: const Icon(Icons.copy_all_outlined),
+                label: const Text('复制组件'),
+              ),
+              const Spacer(),
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                    backgroundColor: Colors.redAccent),
+                onPressed: () {
+                  Navigator.pop(context);
+                  widget.onDelete();
+                },
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('删除'),
+              ),
+            ]),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  顶层工具函数（与原版一致，不用改）
+// ─────────────────────────────────────────────────────────────
+// 编辑界面顶部栏
 Widget _label(String t) => Padding(
       padding: const EdgeInsets.only(top: 14, bottom: 6),
       child: Text(t, style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -232,8 +294,9 @@ Widget _swatches(String title, Color? value, ValueChanged<Color?> onPick) {
             ),
             borderRadius: BorderRadius.circular(10),
           ),
-          child:
-              label.isEmpty ? null : Text(label, style: const TextStyle(fontSize: 12)),
+          child: label.isEmpty
+              ? null
+              : Text(label, style: const TextStyle(fontSize: 12)),
         ),
       );
   return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

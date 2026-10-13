@@ -56,7 +56,7 @@ class FloatButton extends StatelessWidget {
           child: Row(children: [
             Icon(Icons.add_chart_outlined, size: 20),
             SizedBox(width: 8),
-            Text('新建模板'),
+            Text('新建点击模板'),
           ]),
         ),
       ],

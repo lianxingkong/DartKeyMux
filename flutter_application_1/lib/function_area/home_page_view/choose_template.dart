@@ -5,6 +5,7 @@ import 'package:flutter_application_1/function_area/floating_window/create_templ
 import 'package:flutter_application_1/function_area/floating_window/create_mouse_move_page.dart';
 import '../all_template/base/template_document.dart';
 import '../all_template/player_template/custom_play_page.dart';
+import '../all_template/player_template/custom_mouse_play_page.dart';
 
 class ChooseTemplate extends StatefulWidget {
   const ChooseTemplate({super.key});
@@ -114,17 +115,22 @@ class _ChooseTemplateState extends State<ChooseTemplate> {
                                   .updateTemplate(index, result.toJson());
                             }
                           }),
+                          // 从这里开始显示功能键
                           const SizedBox(width: 12),
                           _circleIconBtn(Icons.delete_outline,
                               () => TemplateService.instance.deleteTemplate(
                                   context, index)),
-                          // ★ 鼠标模板不显示分享按钮
+                          // 鼠标模板不显示分享按钮
                           if (!isMouse) ...[
                             const SizedBox(width: 12),
                             _circleIconBtn(Icons.share,
                                 () => TemplateService.instance.shareTemplate(
                                     context, index)),
                           ],
+                          const SizedBox(width: 12),
+                          // 一键置顶：点击不变色，立刻将该模板移到列表最前
+                          _circleIconBtn(Icons.vertical_align_top,
+                              () => TemplateService.instance.pinToTop(index)),
                           const SizedBox(width: 12),
                           _autoStartBtn(index),
                         ],
@@ -144,15 +150,7 @@ class _ChooseTemplateState extends State<ChooseTemplate> {
   /// 按类型打开播放页
   void _openPlay(BuildContext context, TemplateDraft draft, bool isMouse) {
     if (isMouse) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => CreateMouseMovePage(
-            initial: draft,
-            playMode: true,
-          ),
-        ),
-      );
+      openCustomMousePlayPage(context, draft);
     } else {
       openCustomPlayPage(context, draft);
     }
