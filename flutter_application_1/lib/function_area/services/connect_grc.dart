@@ -18,10 +18,11 @@ class GrpcKeyService {
   rpcKeyServiceClient? _client;
 
   StreamController<keyInput>? _inputController;
-  StreamController<MouseEvent>? _mouseController;
   // 直接持有 ResponseFuture（而不是 then 出来的 Future）→ 会话挂死时能
+  StreamController<MouseEvent>? _mouseController;
   // cancel()，不会在 channel 上留僵尸 call
   ResponseFuture<keyReturn>? _sessionCall;
+  ResponseFuture<MouseReturn>? _mouseCall;
 
   // ═══════════ 会话生命周期保护 ═══════════
   /// 会话编号：旧会话的收尾逻辑不得碰新会话的状态（应对快速 退出→再进入）
@@ -80,17 +81,55 @@ class GrpcKeyService {
   }
 
   // ═══════════ 原有逻辑 ═══════════
+
+  /// 当前连接的主机和端口，用于判定是否需要重建通道
+  String? _currentHost;
+  int? _currentPort;
+
   void init({required String host, required int port}) {
-    // debugPrint('[_health] init 被调用: $host:$port');
-    _channel ??= ClientChannel(
+    // ★ 同一地址 → 无需重建（防止重复调用打断活跃连接）
+    if (_currentHost == host && _currentPort == port && _channel != null) {
+      return;
+    }
+
+    // ── 记下新地址 ──
+    _currentHost = host;
+    _currentPort = port;
+
+    // ── 清理旧连接 ──
+    _healthTimer?.cancel();
+    _healthTimer = null;
+    _healthClient = null;
+
+    // 关闭活跃的流式会话（旧 client 即将废弃）
+    final oldInput = _inputController;
+    final oldMouse = _mouseController;
+    _inputController = null;
+    _mouseController = null;
+    _sessionCall = null;
+    _mouseCall = null;
+    ++_sessionToken;      // 旧会话的收尾回调读到旧 token 会跳过清理
+    _closing = false;
+
+    unawaited(oldInput?.close().catchError((_) {}));
+    unawaited(oldMouse?.close().catchError((_) {}));
+
+    // 关闭旧 channel（异步，不等待）
+    final oldChannel = _channel;
+    _channel = null;
+    _client = null;
+    unawaited(oldChannel?.shutdown().catchError((_) {}));
+
+    // ── 建立新连接 ──
+    _channel = ClientChannel(
       host,
       port: port,
       options: const ChannelOptions(
         credentials: ChannelCredentials.insecure(),
       ),
     );
-    _client ??= rpcKeyServiceClient(_channel!);
-    _healthClient ??= HealthClient(_channel!);
+    _client = rpcKeyServiceClient(_channel!);
+    _healthClient = HealthClient(_channel!);
     _startHealthCheck();
   }
 
@@ -103,21 +142,19 @@ class GrpcKeyService {
 
     final token = ++_sessionToken;
     _closing = false;
+
+    // ── 键盘流 ──
     _inputController = StreamController<keyInput>();
+    final keyCall = _client!.keyService(_inputController!.stream);
+    _sessionCall = keyCall;
 
-    final call = _client!.keyService(_inputController!.stream);
-    _sessionCall = call;
-
-    // 会话结束（服务端回了 keyReturn，或连接出错）时，若它仍是当前会话
-    // 就就地清空状态。否则：死会话会占住上面的门闩（新会话开不起来）、
-    // sendKey 还会往已废的流里无限堆事件（缓冲只增不减 = 内存泄漏）。
-    unawaited(call
+    unawaited(keyCall
         .then((resp) {
           debugPrint('会话完成: isAllDone=${resp.isAllDone}, metaData=${resp.metaData}');
           return resp;
         })
         .catchError((e) {
-          debugPrint('gRPC 会话出错: $e');
+          debugPrint('gRPC 键盘会话出错: $e');
           throw e;
         })
         .whenComplete(() {
@@ -125,7 +162,29 @@ class GrpcKeyService {
             final old = _inputController;
             _inputController = null;
             _sessionCall = null;
-            _closing = false;
+            if (old != null && !old.isClosed) unawaited(old.close());
+          }
+        }));
+
+    // ── 鼠标流 ──
+    _mouseController = StreamController<MouseEvent>();
+    final mouseCall = _client!.mouseService(_mouseController!.stream);
+    _mouseCall = mouseCall;
+
+    unawaited(mouseCall
+        .then((resp) {
+          debugPrint('鼠标会话完成: isAllDone=${resp.isAllDone}, metaData=${resp.metaData}');
+          return resp;
+        })
+        .catchError((e) {
+          debugPrint('gRPC 鼠标会话出错: $e');
+          throw e;
+        })
+        .whenComplete(() {
+          if (token == _sessionToken) {
+            final old = _mouseController;
+            _mouseController = null;
+            _mouseCall = null;
             if (old != null && !old.isClosed) unawaited(old.close());
           }
         }));
@@ -155,9 +214,9 @@ class GrpcKeyService {
   // 传输鼠标移动参数
   void sendPos({required MouseEvent_EventType type, required int dx, required int dy, required int scrollDelta}){
     final ctrl = _mouseController;
-    final call = _sessionCall;
+    final call = _mouseCall;
     if (ctrl == null || ctrl.isClosed || call == null || _closing) {
-      debugPrint('会话未开启');
+      debugPrint('鼠标会话未开启');
       return;
     }
     try{
@@ -169,42 +228,65 @@ class GrpcKeyService {
           ..scrollDelta = scrollDelta
       );
     } catch(e){
-      debugPrint('入流失败（会话已失效）');
+      debugPrint('鼠标入流失败（会话已失效）');
     }
   }
 
   Future<keyReturn?> endSession() async {
-    final ctrl = _inputController;
-    if (ctrl == null) return null;
+    final keyCtrl = _inputController;
+    final mouseCtrl = _mouseController;
+    if (keyCtrl == null && mouseCtrl == null) return null;
 
     final token = _sessionToken;
-    final call = _sessionCall;
-    _closing = true; // 收流期间不再接受新按键
+    final keyCall = _sessionCall;
+    final mouseCall = _mouseCall;
+    _closing = true; // 收流期间不再接受新事件
 
-    // 1) 关闭输入流 = 通知服务端“收流”。半死连接下 close 也可能迟迟不回 → 限时兜底
-    try {
-      await ctrl.close().timeout(const Duration(seconds: 2));
-    } catch (_) {
-      debugPrint('[grpc] 关流超时/失败，继续强制清理');
-    }
-
-    // 2) 等服务端的 keyReturn 汇总。服务端不回（挂死的连接、或协议上死等
-    //    一个永远不会来的 keyUp）时，旧实现这里会永久悬挂：反复“进入→
-    //    退出”还会在 channel 上积累僵尸 call。现在限时等待，超时即 cancel()。
-    keyReturn? result;
-    if (call != null) {
+    // 1) 关闭鼠标流
+    if (mouseCtrl != null && !mouseCtrl.isClosed) {
       try {
-        result = await call.timeout(const Duration(seconds: 3));
+        await mouseCtrl.close().timeout(const Duration(seconds: 2));
       } catch (_) {
-        debugPrint('[grpc] 等待 keyReturn 超时/出错，取消该会话');
-        unawaited(call.cancel().catchError((_) {}));
+        debugPrint('[grpc] 鼠标关流超时/失败，继续强制清理');
       }
     }
 
-    // 3) 仅当仍是当前会话时清理状态（防止把新会话清掉）
+    // 2) 关闭键盘流
+    if (keyCtrl != null && !keyCtrl.isClosed) {
+      try {
+        await keyCtrl.close().timeout(const Duration(seconds: 2));
+      } catch (_) {
+        debugPrint('[grpc] 键盘关流超时/失败，继续强制清理');
+      }
+    }
+
+    // 3) 等待 MouseReturn
+    if (mouseCall != null) {
+      try {
+        await mouseCall.timeout(const Duration(seconds: 3));
+      } catch (_) {
+        debugPrint('[grpc] 等待 MouseReturn 超时/出错，取消该会话');
+        unawaited(mouseCall.cancel().catchError((_) {}));
+      }
+    }
+
+    // 4) 等待 keyReturn 汇总
+    keyReturn? result;
+    if (keyCall != null) {
+      try {
+        result = await keyCall.timeout(const Duration(seconds: 3));
+      } catch (_) {
+        debugPrint('[grpc] 等待 keyReturn 超时/出错，取消该会话');
+        unawaited(keyCall.cancel().catchError((_) {}));
+      }
+    }
+
+    // 5) 仅当仍是当前会话时清理状态（防止把新会话清掉）
     if (token == _sessionToken) {
       _inputController = null;
       _sessionCall = null;
+      _mouseController = null;
+      _mouseCall = null;
       _closing = false;
     }
     return result;

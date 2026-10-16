@@ -8,6 +8,9 @@ import 'package:flutter_application_1/function_area/services/template_service.da
 import 'package:flutter_application_1/function_area/services/connect_grc.dart';
 import 'package:flutter_application_1/function_area/all_template/player_template/custom_play_page.dart';
 import 'package:flutter_application_1/function_area/all_template/player_template/custom_mouse_play_page.dart';
+import 'package:flutter_application_1/function_area/sidebar/connect_state.dart';
+import './app_config.dart';
+
 
 
 Future<void> main() async {
@@ -18,13 +21,22 @@ Future<void> main() async {
     overlays: [SystemUiOverlay.top],
   );  // 关闭部分手机底部导航栏
 
+  AppConfig.grpcPort.addListener(_reconnectGrpc);
+
   GrpcKeyService.instance.init(
-    host: '127.0.0.1',   // ← 改成你后端电脑的局域网 IP
-    port: 50051,             // ← 改成后端监听的端口，和 Go 里 net.Listen 保持一致
+    host: AppConfig.grpcHost.value,   // ← 改成你后端电脑的局域网 IP
+    port: AppConfig.grpcPort.value,
   );
 
   await TemplateService.instance.loadOnce();          // ★ 启动时先读存档
   runApp(const MainApp());
+}
+
+void _reconnectGrpc() {
+  GrpcKeyService.instance.init(
+    host: AppConfig.grpcHost.value,   // host 虽然不监听，重连时还是要带上当前值
+    port: AppConfig.grpcPort.value,
+  );
 }
 
 class MainApp extends StatelessWidget {
@@ -82,47 +94,7 @@ class __MainInterfaceState extends State<_MainInterface> {
             appBar: AppBar(
               title: const Text("主 页"),
               actions: [
-                ValueListenableBuilder<bool>(
-                  valueListenable: GrpcKeyService.instance.isBackendAlive,
-                  builder: (context, alive, _) {
-                    final color = alive ? Colors.green : Colors.red;
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.only(right: 16),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // 指示灯
-                            Container(
-                              width: 12,
-                              height: 12,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: color,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: color.withValues(alpha: 0.6),
-                                    blurRadius: 8,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            // 文字
-                            Text(
-                              alive ? "已连接" : "未连接",
-                              style: TextStyle(
-                                color: color,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
+                ConnectState(valueListenable:GrpcKeyService.instance.isBackendAlive)  // 连接状态灯
               ],
             ),
         drawer: const MainSidebarMenu(),  // 侧边栏菜单

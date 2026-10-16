@@ -46,6 +46,13 @@ class rpcKeyServiceClient extends $grpc.Client {
     return $createUnaryCall(_$keyServiceDebug, request, options: options);
   }
 
+  $grpc.ResponseFuture<$0.MouseReturn> mouseService(
+    $async.Stream<$0.MouseEvent> request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createStreamingCall(_$mouseService, request, options: options).single;
+  }
+
   // method descriptors
 
   static final _$keyService = $grpc.ClientMethod<$0.keyInput, $0.keyReturn>(
@@ -57,6 +64,11 @@ class rpcKeyServiceClient extends $grpc.Client {
           '/GoKeyMux.rpcKeyService/keyServiceDebug',
           ($0.keyInputDebug value) => value.writeToBuffer(),
           $0.keyReturnDebug.fromBuffer);
+  static final _$mouseService =
+      $grpc.ClientMethod<$0.MouseEvent, $0.MouseReturn>(
+          '/GoKeyMux.rpcKeyService/MouseService',
+          ($0.MouseEvent value) => value.writeToBuffer(),
+          $0.MouseReturn.fromBuffer);
 }
 
 @$pb.GrpcServiceName('GoKeyMux.rpcKeyService')
@@ -78,10 +90,20 @@ abstract class rpcKeyServiceBase extends $grpc.Service {
         false,
         ($core.List<$core.int> value) => $0.keyInputDebug.fromBuffer(value),
         ($0.keyReturnDebug value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.MouseEvent, $0.MouseReturn>(
+        'MouseService',
+        mouseService,
+        true,
+        false,
+        ($core.List<$core.int> value) => $0.MouseEvent.fromBuffer(value),
+        ($0.MouseReturn value) => value.writeToBuffer()));
   }
 
   $async.Future<$0.keyReturn> keyService(
       $grpc.ServiceCall call, $async.Stream<$0.keyInput> request);
+
+  $async.Future<$0.MouseReturn> mouseService(
+      $grpc.ServiceCall call, $async.Stream<$0.MouseEvent> request);
 
   $async.Future<$0.keyReturnDebug> keyServiceDebug_Pre(
       $grpc.ServiceCall $call, $async.Future<$0.keyInputDebug> $request) async {

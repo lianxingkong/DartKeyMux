@@ -20,8 +20,9 @@ class MousePointer {
 /// 封装两套触控逻辑：
 ///   • **拖动模式**（mouseMode=0）：单指按下=按住按键，移动=拖动，松手=释放；
 ///     双指=滚轮，三指=中键拖动。
-///   • **点击模式**（mouseMode=1）：快速轻触（<200ms、<10px）= 完整点击；
-///     长按移动 = 自动进入拖动；双指轻触=右键，三指=中键。
+///   • **触控板**（mouseMode=1）：模拟笔记本电脑触控板 —
+///     单指移动=光标、单指轻触=左键、单指按住后移动=拖动；
+///     双指移动=滚轮、双指轻触=右键；三指轻触=中键、三指按住后移动=中键拖动。
 ///
 /// 由创建页和播放页共用，避免逻辑重复。
 class MouseTouchEngine {
@@ -29,7 +30,7 @@ class MouseTouchEngine {
 
   // ── 参数（可通过外部 setState 修改）──
   double sensitivity;
-  int mouseMode;       // 0=拖动, 1=点击
+  int mouseMode;       // 0=拖动, 1=触控板
   int dragButton;      // 拖动模式下的按键：0=左, 1=右, 2=中
 
   // ── 指针追踪（多点触控）──
@@ -118,17 +119,16 @@ class MouseTouchEngine {
     if (mouseMode == 0) {
       onDownDrag(ptr);
     }
-    // 点击模式：不立即发送，等判定
+    // 触控板：不立即发送，等判定
   }
 
   void onMove(PointerMoveEvent e) {
     final ptr = ptrs[e.pointer];
     if (ptr == null) return;
 
-    final dist = (e.position - ptr.downPos).distance;
-    if (dist > tapMaxDist) ptr.hasMoved = true;
-
     if (mouseMode == 0) {
+      final dist = (e.position - ptr.downPos).distance;
+      if (dist > tapMaxDist) ptr.hasMoved = true;
       onMoveDrag(ptr, e);
     } else {
       onMoveTap(ptr, e);
@@ -162,8 +162,10 @@ class MouseTouchEngine {
     final ptr = ptrs.remove(e.pointer);
     if (ptr == null) return;
     activeFingerCount = ptrs.length;
-    if (ptr.dragActivated && mouseMode == 0) {
-      send(upOf(dragButton), 0, 0, 0);
+    if (ptr.dragActivated) {
+      // 拖动中的指针被取消 → 释放按键防止按钮卡死
+      final btn = mouseMode == 0 ? dragButton : 0; // 拖动模式用自定义键，触控板默认左键
+      send(upOf(btn), 0, 0, 0);
     }
     if (e.pointer == dotFinger) {
       dotFinger = ptrs.keys.firstOrNull ?? -1;
@@ -205,23 +207,32 @@ class MouseTouchEngine {
     }
   }
 
-  // ───────── 点击模式 ─────────
+  // ───────── 触控板 ─────────
 
   void onMoveTap(MousePointer ptr, PointerMoveEvent e) {
-    if (ptr.hasMoved && !ptr.dragActivated && activeFingerCount >= 1) {
-      // 进入拖动
-      final btn = btnForTapDrag(activeFingerCount);
-      if (btn >= 0) {
+    final n = activeFingerCount;
+    final dur = DateTime.now().difference(ptr.downTime).inMilliseconds;
+    final dist = (e.position - ptr.downPos).distance;
+    // 捕获"刚好越过移动阈值"的瞬间（用于判断是否在按住足够久后首次移动）
+    final justCrossed = dist > tapMaxDist && !ptr.hasMoved;
+    if (dist > tapMaxDist) ptr.hasMoved = true;
+
+    // 双指以上 + 垂直移动 → 滚轮（优先，不发送 MOVE）
+    if (n >= 2 && e.delta.dy.abs() > scrollThreshold) {
+      sendScrollDelta(e.delta);
+      return;
+    }
+
+    // 单指 / 三指：发送 MOVE
+    if (n == 1 || n == 3) {
+      // 刚好越过移动阈值 + 按下已超 200ms → 判定为「按住后拖动」
+      if (justCrossed && dur > tapMaxMs) {
+        final btn = n == 3 ? 2 : 0; // 三指=中键, 单指=左键
         sendDelta(downOf(btn), Offset.zero);
         ptr.dragActivated = true;
       }
-    }
-    if (ptr.dragActivated) {
-      if (activeFingerCount >= 2 && e.delta.dy.abs() > scrollThreshold) {
-        sendScrollDelta(e.delta);
-      } else {
-        sendDelta(MouseEvent_EventType.MOVE, e.delta);
-      }
+      // 发送光标移动（拖动激活后 MOVE 会携带按钮状态，否则是纯光标移动）
+      sendDelta(MouseEvent_EventType.MOVE, e.delta);
     }
   }
 
@@ -230,8 +241,8 @@ class MouseTouchEngine {
     final isTap = !ptr.hasMoved && dur <= tapMaxMs;
 
     if (ptr.dragActivated) {
-      // 拖动结束
-      final btn = btnForTapDrag(beforeCount);
+      // 拖动结束 → 释放按键
+      final btn = beforeCount >= 3 ? 2 : 0; // 三指=中键, 单指=左键
       send(upOf(btn), 0, 0, 0);
     } else if (isTap) {
       // 轻触 → 完整点击（DOWN + UP）
@@ -243,9 +254,10 @@ class MouseTouchEngine {
         });
       }
     }
+    // 仅移动光标（无拖动、非轻触）→ 无按键需要释放
   }
 
-  /// 点击模式：轻触时根据手指数量映射按键
+  /// 触控板：轻触时根据手指数量映射按键
   int btnForTapClick(int fingers) => switch (fingers) {
     1 => 0, // 左键
     2 => 1, // 右键
@@ -253,7 +265,7 @@ class MouseTouchEngine {
     _ => -1,
   };
 
-  /// 点击模式：拖动时根据手指数量映射按键
+  /// 触控板：按住拖动时根据手指数量映射按键
   int btnForTapDrag(int fingers) => switch (fingers) {
     1 => 0, // 左键拖动
     2 => 1, // 右键拖动（非滚轮时）
@@ -324,119 +336,122 @@ class MouseTouchEngine {
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 标题
-                Row(children: [
-                  const Text('触控板设置',
-                      style: TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.bold)),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.of(context).pop(),
-                    tooltip: '关闭',
-                  ),
-                ]),
-                const Divider(),
+            child:SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 标题
+                  Row(children: [
+                    const Text('触控板设置',
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold)),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.of(context).pop(),
+                      tooltip: '关闭',
+                    ),
+                  ]),
+                  const Divider(),
 
-                // ── 功能 1：模式选择 ──
-                const Text('触控模式',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 8),
-                Row(children: [
-                  Expanded(
-                    child: _sharedModeBtn(
-                        '拖动', Icons.touch_app, 0, mouseMode == 0, onChanged),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _sharedModeBtn('点击', Icons.tap_and_play, 1,
-                        mouseMode == 1, onChanged),
-                  ),
-                ]),
-                const SizedBox(height: 16),
-
-                // ── 功能 2：拖动按键选择（仅拖动模式可见）──
-                if (mouseMode == 0) ...[
-                  const Text('拖动按键',
+                  // ── 功能 1：模式选择 ──
+                  const Text('触控模式',
                       style: TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
                   Row(children: [
-                    _sharedBtnChip('左键', 0, dragButton == 0, onChanged),
-                    const SizedBox(width: 6),
-                    _sharedBtnChip('右键', 1, dragButton == 1, onChanged),
-                    const SizedBox(width: 6),
-                    _sharedBtnChip('中键', 2, dragButton == 2, onChanged),
+                    Expanded(
+                      child: _sharedModeBtn(
+                          '拖动', Icons.touch_app, 0, mouseMode == 0, onChanged),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _sharedModeBtn('触板', Icons.tap_and_play, 1,
+                          mouseMode == 1, onChanged),
+                    ),
                   ]),
                   const SizedBox(height: 16),
-                ],
 
-                // ── 功能 3：灵敏度 ──
-                Row(children: [
-                  const Text('灵敏度',
-                      style: TextStyle(fontWeight: FontWeight.w600)),
-                  const Spacer(),
-                  Text('${(sensitivity * 100).round()}%',
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
-                ]),
-                const SizedBox(height: 4),
-                Slider(
-                  value: sensitivity,
-                  min: 0.25,
-                  max: 3.0,
-                  divisions: 11,
-                  onChanged: (v) {
-                    sensitivity = v;
-                    onChanged();
-                  },
-                ),
-                const SizedBox(height: 16),
+                  // ── 功能 2：拖动按键选择（仅拖动模式可见）──
+                  if (mouseMode == 0) ...[
+                    const Text('拖动按键',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      _sharedBtnChip('左键', 0, dragButton == 0, onChanged),
+                      const SizedBox(width: 6),
+                      _sharedBtnChip('右键', 1, dragButton == 1, onChanged),
+                      const SizedBox(width: 6),
+                      _sharedBtnChip('中键', 2, dragButton == 2, onChanged),
+                    ]),
+                    const SizedBox(height: 16),
+                  ],
 
-                // ── 模式说明 ──
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(8),
+                  // ── 功能 3：灵敏度 ──
+                  Row(children: [
+                    const Text('灵敏度',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
+                    const Spacer(),
+                    Text('${(sensitivity * 100).round()}%',
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ]),
+                  const SizedBox(height: 4),
+                  Slider(
+                    value: sensitivity,
+                    min: 0.25,
+                    max: 3.0,
+                    divisions: 11,
+                    onChanged: (v) {
+                      sensitivity = v;
+                      onChanged();
+                    },
                   ),
-                  child: Text(
-                    mouseMode == 0
-                        ? '拖动模式：单指按拖动按键，双指滚轮，三指中键拖动'
-                        : '点击模式：轻触=完整点击，长按移动=拖动\n'
-                          '单指=左键 · 双指=右键 · 三指=中键\n'
-                          '双指拖动=滚轮',
-                    style:
-                        TextStyle(fontSize: 12, color: Colors.grey.shade700),
-                  ),
-                ),
-                const Spacer(),
+                  const SizedBox(height: 16),
 
-                // ── 功能 4：操作按钮 ──
-                Row(children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => Navigator.of(context).maybePop(),
-                      icon: const Icon(Icons.arrow_back, size: 18),
-                      label: const Text('返回'),
+                  // ── 模式说明 ──
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      mouseMode == 0
+                          ? '拖动模式：单指按拖动按键，双指滚轮，三指中键拖动'
+                          : '触控板：模拟笔记本电脑触控板\n'
+                            '单指移动=光标 · 单指轻触=左键\n'
+                            '按住后移动=拖动 · 双指=滚轮\n'
+                            '双指轻触=右键 · 三指轻触=中键',
+                      style:
+                          TextStyle(fontSize: 12, color: Colors.grey.shade700),
                     ),
                   ),
-                  if (showSave) ...[
-                    const SizedBox(width: 10),
+                  const SizedBox(height: 24),
+
+                  // ── 功能 4：操作按钮 ──
+                  Row(children: [
                     Expanded(
-                      child: FilledButton.icon(
-                        onPressed: () {
-                          Navigator.of(context).pop(); // 先关抽屉
-                          onSave?.call();
-                        },
-                        icon: const Icon(Icons.check, size: 18),
-                        label: const Text('保存'),
+                      child: OutlinedButton.icon(
+                        onPressed: () => Navigator.of(context).maybePop(),
+                        icon: const Icon(Icons.arrow_back, size: 18),
+                        label: const Text('返回'),
                       ),
                     ),
-                  ],
-                ]),
-              ],
+                    if (showSave) ...[
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).pop(); // 先关抽屉
+                            onSave?.call();
+                          },
+                          icon: const Icon(Icons.check, size: 18),
+                          label: const Text('保存'),
+                        ),
+                      ),
+                    ],
+                  ]),
+                ],
+              ),
             ),
           ),
         ),
@@ -470,7 +485,7 @@ class MouseTouchEngine {
           fontSize: 13,
         ),
         visualDensity: VisualDensity.compact,
-        padding: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 2),
       );
 
   Widget _sharedBtnChip(

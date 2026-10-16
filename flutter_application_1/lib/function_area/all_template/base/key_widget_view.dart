@@ -45,9 +45,10 @@ class KeyWidgetView extends StatelessWidget {
       height: _h,
       decoration: BoxDecoration(
         color: c,
-        // 圆形：始终用 perfect circle（通过 borderRadius 实现椭圆）
-        shape: (circle && _w == _h) ? BoxShape.circle : BoxShape.rectangle,
-        borderRadius: (circle && _w != _h)
+        // ★ 统一使用 rectangle + borderRadius 实现圆/椭圆，
+        //   避免 AnimatedContainer 过渡期 shape==circle 与 borderRadius!=null 共存的断言崩溃
+        shape: BoxShape.rectangle,
+        borderRadius: circle
             ? BorderRadius.all(Radius.circular(minSide / 2))
             : null,
         boxShadow: [

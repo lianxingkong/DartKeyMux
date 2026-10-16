@@ -111,7 +111,7 @@ class _SheetBodyState extends State<_SheetBody> {
             _label('映射按键'),
             TextField(
               controller: keyCtrl,
-              maxLength: 4,
+              maxLength: 10,
               textCapitalization: TextCapitalization.none,
               decoration: const InputDecoration(
                   isDense: true, border: OutlineInputBorder()),

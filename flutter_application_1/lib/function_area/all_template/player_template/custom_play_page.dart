@@ -5,6 +5,7 @@ import '../base/template_document.dart';
 import '../base/key_widget_view.dart';
 import '../base/floating_control.dart';
 import '../../services/connect_grc.dart';
+import '../../setting/mapping_key_page.dart';
 
 /// 自定义模板游玩页：
 /// - 单个全屏 Listener 接收所有指针，从最上层组件开始做"旋转感知"命中
@@ -41,7 +42,7 @@ class _CustomPlayPageState extends State<CustomPlayPage> {
     //   否则服务端可能死等 keyUp 而永不返回 keyReturn（会话悬挂）。
     final heldKeys = <String>{ for (final w in _active.values) w.key };
     for (final k in heldKeys) {
-      _grpc.sendKey(key: k, isRune: true, isPressed: false);
+      _grpc.sendKey(key: k, isRune: !isNamedKey(k), isPressed: false);
     }
     _active.clear();
     _pressedIds.clear();
@@ -68,7 +69,7 @@ class _CustomPlayPageState extends State<CustomPlayPage> {
           if (w == null) return;
           _active[e.pointer] = w;
           _pressedIds.add(w.id);
-          _grpc.sendKey(key: w.key, isRune: true, isPressed: true);
+          _grpc.sendKey(key: w.key, isRune: !isNamedKey(w.key), isPressed: true);
           setState(() {});
         }
 
@@ -77,7 +78,7 @@ class _CustomPlayPageState extends State<CustomPlayPage> {
           final w = _active.remove(e.pointer);
           if (w == null) return;
           _pressedIds.remove(w.id);
-          _grpc.sendKey(key: w.key, isRune: true, isPressed: false);
+          _grpc.sendKey(key: w.key, isRune: !isNamedKey(w.key), isPressed: false);
           setState(() {});
         }
 

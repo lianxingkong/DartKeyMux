@@ -40,6 +40,7 @@ message MouseEvent {
     MIDDLE_DOWN = 6;  // 中键按下 (忽略 x, y)
     MIDDLE_UP = 7;    // 中键抬起 (忽略 x, y)
     SCROLL = 8;       // 滚轮 (使用 scroll_delta，忽略 x, y)
+    ABS_MOVE = 9;     // 绝对移动 (x, y 为归一化坐标 0~10000)
   }
   // 事件类型
   EventType type = 1;
