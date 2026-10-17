@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 /// ── 形状（预留扩展：pill / diamond…）──
-enum KShape { square, circle }
+enum KShape { square, circle, joystick }
 
 KShape _shapeFromId(String id) =>
     KShape.values.where((e) => e.name == id).firstOrNull ?? KShape.square;
@@ -23,11 +23,23 @@ class KeyWidget {
     required this.cx,
     required this.cy,
     double? size,
-    double? sizeW, // ← 不用 this.，在构造体内赋给私有字段
+    double? sizeW,
     double? sizeH,
     this.rotation = 0,
     this.idleColor,
     this.pressedColor,
+    this.imagePath,           // ★ 组件内图片路径
+    this.imageOpacity = 1.0,  // ★ 组件内图片透明度
+    this.imageDx = 0,            // ★ 图片水平偏移
+    this.imageDy = 0,            // ★ 图片垂直偏移
+    this.imageScale = 1.0,       // ★ 图片缩放
+    // ── 摇杆属性 ──
+    this.joyInnerRadius = 0.3,   // 内圈半径占比 (0..1)
+    this.joyUpKey = 'up',        // 上方向映射键
+    this.joyDownKey = 'down',    // 下方向映射键
+    this.joyLeftKey = 'left',    // 左方向映射键
+    this.joyRightKey = 'right',  // 右方向映射键
+    this.joyInnerKey = '',       // 内圈按下映射键（空=不触发）
   }) : assert(size != null || (sizeW != null && sizeH != null),
             '必须提供 size 或同时提供 sizeW 与 sizeH') {
     if (size != null) {
@@ -64,6 +76,19 @@ class KeyWidget {
   final double rotation;     // 角度制 0~360
   final Color? idleColor;    // 可选：松开色
   final Color? pressedColor; // 可选：按下色（不填自动派生）
+  final String? imagePath;   // ★ 组件内图片
+  final double imageOpacity;  // ★ 图片透明度 0..1
+  final double imageDx;       // ★ 图片水平偏移（px），裁剪定位
+  final double imageDy;       // ★ 图片垂直偏移（px）
+  final double imageScale;    // ★ 图片缩放比，默认 1.0
+
+  // ── 摇杆属性 ──
+  final double joyInnerRadius;   // 内圈半径占比
+  final String joyUpKey;         // 上方向
+  final String joyDownKey;       // 下方向
+  final String joyLeftKey;       // 左方向
+  final String joyRightKey;      // 右方向
+  final String joyInnerKey;      // 中心按下
 
   double get rotationRad => rotation * math.pi / 180;
 
@@ -72,6 +97,10 @@ class KeyWidget {
     double? size, double? sizeW, double? sizeH,
     double? rotation, Color? idleColor, Color? pressedColor,
     bool clearIdle = false, bool clearPressed = false,
+    String? imagePath, double? imageOpacity, bool clearImage = false,
+    double? imageDx, double? imageDy, double? imageScale,
+    double? joyInnerRadius, String? joyUpKey, String? joyDownKey,
+    String? joyLeftKey, String? joyRightKey, String? joyInnerKey,
   }) {
     final w = KeyWidget(
       id: id, shape: shape ?? this.shape, key: key ?? this.key,
@@ -81,6 +110,17 @@ class KeyWidget {
       rotation: rotation ?? this.rotation,
       idleColor: clearIdle ? null : (idleColor ?? this.idleColor),
       pressedColor: clearPressed ? null : (pressedColor ?? this.pressedColor),
+      imagePath: clearImage ? null : (imagePath ?? this.imagePath),
+      imageOpacity: imageOpacity ?? this.imageOpacity,
+      imageDx: imageDx ?? this.imageDx,
+      imageDy: imageDy ?? this.imageDy,
+      imageScale: imageScale ?? this.imageScale,
+      joyInnerRadius: joyInnerRadius ?? this.joyInnerRadius,
+      joyUpKey: joyUpKey ?? this.joyUpKey,
+      joyDownKey: joyDownKey ?? this.joyDownKey,
+      joyLeftKey: joyLeftKey ?? this.joyLeftKey,
+      joyRightKey: joyRightKey ?? this.joyRightKey,
+      joyInnerKey: joyInnerKey ?? this.joyInnerKey,
     );
     if (size != null) {
       w._sizeW = size;
@@ -138,7 +178,22 @@ class KeyWidget {
     'rot': rotation,
     if (idleColor != null) 'c0': _c2i(idleColor!),
     if (pressedColor != null) 'c1': _c2i(pressedColor!),
-  };
+    if (imagePath != null && imagePath!.isNotEmpty) 'img': imagePath,
+    if (imagePath != null && imagePath!.isNotEmpty) ...{
+      'imgOp': imageOpacity,
+      'imgDx': imageDx,
+      'imgDy': imageDy,
+      'imgSc': imageScale,
+    },
+    if (shape == KShape.joystick) ...{
+      'jr': joyInnerRadius,
+      'jup': joyUpKey,
+      'jdn': joyDownKey,
+      'jlt': joyLeftKey,
+      'jrt': joyRightKey,
+      'jin': joyInnerKey,
+    },
+    };
 
   /// fromMap 同时承担"导入 sanitize"：所有量钳制到安全范围
   factory KeyWidget.fromMap(Map<String, dynamic> m, String id) {
@@ -157,6 +212,18 @@ class KeyWidget {
       rotation: ((((m['rot'] as num?)?.toDouble() ?? 0) % 360) + 360) % 360,
       idleColor: m['c0'] == null ? null : Color(m['c0'] as int),
       pressedColor: m['c1'] == null ? null : Color(m['c1'] as int),
+      imagePath: m['img'] as String?,
+      imageOpacity: (m['imgOp'] as num?)?.toDouble().clamp(0.0, 1.0) ?? 1.0,
+      imageDx: (m['imgDx'] as num?)?.toDouble() ?? 0,
+      imageDy: (m['imgDy'] as num?)?.toDouble() ?? 0,
+      imageScale: (m['imgSc'] as num?)?.toDouble() ?? 1.0,
+      joyInnerRadius:
+          (m['jr'] as num?)?.toDouble().clamp(0.1, 0.8) ?? 0.3,
+      joyUpKey: (m['jup'] as String?) ?? 'up',
+      joyDownKey: (m['jdn'] as String?) ?? 'down',
+      joyLeftKey: (m['jlt'] as String?) ?? 'left',
+      joyRightKey: (m['jrt'] as String?) ?? 'right',
+      joyInnerKey: (m['jin'] as String?) ?? '',
     );
   }
 

@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../base/template_document.dart';
 import '../base/mouse_touch_core.dart';
 import '../../services/connect_grc.dart';
+import '../../sidebar/theme_colors.dart';
 
 
 /// 鼠标触控模拟播放页（纯使用模式）
@@ -50,7 +52,7 @@ class _CustomMousePlayPageState extends State<CustomMousePlayPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: const Color(0xFFECEFF1),
+      backgroundColor: AppTheme.scaffoldBg(context),
       // ★ 隐藏式右侧侧边栏（播放时可实时调参）
       endDrawer: _engine.buildSettingsDrawer(
         context,
@@ -61,6 +63,17 @@ class _CustomMousePlayPageState extends State<CustomMousePlayPage> {
       drawerEnableOpenDragGesture: false,
       body: Stack(
         children: [
+          // ★ 背景图片（最底层）
+          if (widget.draft.hasBackground)
+            Positioned.fill(
+              child: Opacity(
+                opacity: widget.draft.backgroundOpacity,
+                child: Image.file(
+                  File(widget.draft.backgroundImage!),
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
           // ── 全屏触控层（圆点 + Listener）──
           ..._engine.buildTouchLayers(),
           // ── 极简返回按钮 ──

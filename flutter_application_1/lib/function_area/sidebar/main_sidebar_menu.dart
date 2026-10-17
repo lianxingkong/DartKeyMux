@@ -1,12 +1,14 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_application_1/function_area/setting/basic_setting_page.dart';
 import 'package:flutter_application_1/function_area/services/template_service.dart';
+import 'package:flutter_application_1/function_area/sidebar/theme_colors.dart';
 
 /// ─────────────────────────────────────────────
 /// 主侧边栏菜单
@@ -184,9 +186,21 @@ class _MainSidebarMenuState extends State<MainSidebarMenu> {
 
   @override
   Widget build(BuildContext context) {
-    return Drawer(
-      backgroundColor: const Color.fromARGB(255, 210, 243, 210),
-      child: SingleChildScrollView(
+    final dark = AppTheme.isDark.value;
+    final sidebarBg = AppTheme.sidebarBg(context);
+    // 侧边栏文字颜色：亮色模式用深绿，暗色模式用浅灰白
+    final sidebarText = dark ? const Color(0xFFC8E6C9) : const Color.fromARGB(255, 27, 94, 32);
+
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppTheme.isDark,
+      builder: (context, darkVal, _) {
+        final bg = AppTheme.sidebarBg(context);
+        final txt = darkVal
+            ? const Color(0xFFC8E6C9)
+            : const Color.fromARGB(255, 27, 94, 32);
+        return Drawer(
+          backgroundColor: bg,
+          child: SingleChildScrollView(
         child: Column(
           children: [
             // ─────────────────────────────────────────────
@@ -197,7 +211,7 @@ class _MainSidebarMenuState extends State<MainSidebarMenu> {
               width: double.infinity,
               height: 180,
               // 与 Drawer 背景同色，视觉上无缝衔接
-              color: const Color.fromARGB(255, 210, 243, 210),
+              color: bg,
               padding: const EdgeInsets.symmetric(vertical: 16),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -208,32 +222,40 @@ class _MainSidebarMenuState extends State<MainSidebarMenu> {
                   GestureDetector(
                     onTap: _editUserName,
                     child: Row(
-                      mainAxisSize: MainAxisSize.min, // Row 收缩到内容宽度，实现居中
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Flexible(
                           child: Text(
                             _userName,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              // 浅绿背景上白色看不清，改为深绿色
-                              color: Color.fromARGB(255, 27, 94, 32),
+                            style: TextStyle(
+                              color: txt,
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
                         const SizedBox(width: 4),
-                        const Icon(
-                          Icons.edit,
-                          size: 14,
-                          color: Color.fromARGB(255, 27, 94, 32),
-                        ),
+                        Icon(Icons.edit, size: 14, color: txt),
                       ],
                     ),
                   ),
                 ],
               ),
             ),
+            // ── 暗色模式开关 ──
+            ValueListenableBuilder<bool>(
+              valueListenable: AppTheme.isDark,
+              builder: (context, darkVal, _) => SwitchListTile(
+                secondary: Icon(darkVal ? Icons.dark_mode : Icons.light_mode),
+                title: Text(darkVal ? '暗色模式' : '亮色模式'),
+                value: darkVal,
+                onChanged: (v) => AppTheme.isDark.value = v,
+              ),
+            ),
+            // ── 强制屏幕方向 ──
+            const _OrientationButtons(),
+            const Divider(indent: 16, endIndent: 16),
             // ── 自启动模板开关 ──
             ListTile(
               leading: const Icon(Icons.flash_on),
@@ -291,6 +313,51 @@ class _MainSidebarMenuState extends State<MainSidebarMenu> {
           ],
         ),
       ),
+    );
+      },  // ValueListenableBuilder builder
+    );    // ValueListenableBuilder
+  }
+}
+
+// ─────────────────────────────────────────────
+//  强制屏幕方向按钮组
+// ─────────────────────────────────────────────
+class _OrientationButtons extends StatelessWidget {
+  const _OrientationButtons();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        children: [
+          const Icon(Icons.screen_rotation, size: 18),
+          const SizedBox(width: 8),
+          const Text('屏幕方向', style: TextStyle(fontSize: 14)),
+          const Spacer(),
+          _btn(Icons.stay_primary_portrait, '竖屏',
+              [DeviceOrientation.portraitUp, DeviceOrientation.portraitDown]),
+          const SizedBox(width: 6),
+          _btn(Icons.stay_primary_landscape, '横屏',
+              [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]),
+          const SizedBox(width: 6),
+          _btn(Icons.screen_lock_portrait_outlined, '自动', null),
+        ],
+      ),
+    );
+  }
+
+  Widget _btn(IconData icon, String tooltip, List<DeviceOrientation>? orientations) {
+    return IconButton(
+      icon: Icon(icon, size: 22),
+      tooltip: tooltip,
+      onPressed: () {
+        if (orientations == null) {
+          SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+        } else {
+          SystemChrome.setPreferredOrientations(orientations);
+        }
+      },
     );
   }
 }

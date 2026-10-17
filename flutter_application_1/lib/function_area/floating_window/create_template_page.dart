@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../all_template/base/key_widget.dart';
@@ -5,6 +6,8 @@ import '../all_template/base/template_document.dart';
 import '../all_template/custom_template/snap_engine.dart';
 import '../all_template/custom_template/editor_canvas.dart';
 import '../all_template/custom_template/property_panel.dart';
+import '../all_template/custom_template/background_crop.dart';
+import '../../app_config.dart';
 
 /// 模板编辑器：全屏画布 + 悬浮顶栏(名称) + 悬浮工具条。
 /// 画布全屏铺放，globalPosition == 画布坐标，几何计算无偏移。
@@ -37,12 +40,19 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
   /// 画布缩放（双指拉升 / 工具栏 ± 按钮）
   double _canvasScale = 1.0;
 
+  /// ★ 背景图片
+  String? _bgImage;
+  double _bgOpacity = 1.0;
+
   @override
   void initState() {
     super.initState();
-    _name = widget.initial?.name ?? '';
+    final ini = widget.initial;
+    _name = ini?.name ?? '';
     _nameCtrl = TextEditingController(text: _name);
-    _widgets = List.of(widget.initial?.widgets ?? []);
+    _widgets = List.of(ini?.widgets ?? []);
+    _bgImage = ini?.backgroundImage;
+    _bgOpacity = ini?.backgroundOpacity ?? 1.0;
   }
 
   @override
@@ -153,9 +163,20 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
       newHalfH = SnapEngine.snapScalar(newHalfH, cands);
     }
 
+    // ★ 摇杆强制等比：取宽高平均值
+    if (w.shape == KShape.joystick) {
+      final avg = (newHalfW + newHalfH) / 2;
+      newHalfW = avg;
+      newHalfH = avg;
+    }
+
+    final newSizeW =
+        (2 * newHalfW / _canvas.width).clamp(.05, 4.0);
+    final newSizeH =
+        (2 * newHalfH / _canvas.height).clamp(.05, 4.0);
     _upd(w.copyWith(
-      sizeW: (2 * newHalfW / _canvas.width).clamp(.02, 4.0),
-      sizeH: (2 * newHalfH / _canvas.height).clamp(.02, 4.0),
+      sizeW: newSizeW,
+      sizeH: newSizeH,
     ));
   }
 
@@ -227,7 +248,34 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
       for (final w in _widgets)
         w.copyWith(key: w.key.trim().isEmpty ? 'a' : w.key.trim()),
     ];
-    Navigator.pop(context, TemplateDraft(name: name, widgets: widgets));
+    Navigator.pop(
+      context,
+      TemplateDraft(
+        name: name,
+        widgets: widgets,
+        backgroundImage: _bgImage,
+        backgroundOpacity: _bgOpacity,
+      ),
+    );
+  }
+
+  /// ★ 打开背景图片裁剪页
+  Future<void> _openBackgroundCrop() async {
+    final result = await Navigator.push<Map<String, dynamic>?>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BackgroundCropPage(
+          widgets: _widgets,
+          existingPath: _bgImage,
+          initialOpacity: _bgOpacity,
+        ),
+      ),
+    );
+    // null = 用户清除了背景
+    setState(() {
+      _bgImage = result?['path'] as String?;
+      _bgOpacity = (result?['opacity'] as num?)?.toDouble() ?? 1.0;
+    });
   }
 
   @override
@@ -237,7 +285,20 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
       body: LayoutBuilder(builder: (context, cons) {
         _canvas = cons.biggest;
         return Stack(children: [
-          // 画布（全屏，最底层）+ 双指缩放手势
+          // ★ 背景图片层（最底）
+          if (_bgImage != null && File(_bgImage!).existsSync())
+            Positioned.fill(
+              child: Opacity(
+                opacity: _bgOpacity,
+                child: Image.file(
+                  File(_bgImage!),
+                  fit: BoxFit.cover,
+                  width: _canvas.width,
+                  height: _canvas.height,
+                ),
+              ),
+            ),
+          // 画布（全屏）+ 双指缩放手势
           Positioned.fill(
             child: GestureDetector(
               onScaleStart: (_) {},            // 必须提供才能触发 onScaleUpdate
@@ -320,6 +381,15 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               _tb(Icons.crop_square, '方', () => _add(KShape.square)),
               _tb(Icons.circle_outlined, '圆', () => _add(KShape.circle)),
+              // ★ 摇杆组件（实验性功能）
+              ValueListenableBuilder<bool>(
+                valueListenable: AppConfig.experimentalMode,
+                builder: (_, exp, __) => exp
+                    ? _tb(Icons.games, '摇杆', () => _add(KShape.joystick))
+                    : const SizedBox.shrink(),
+              ),
+              const SizedBox(width: 6),
+              _tb(Icons.image, '背景', _openBackgroundCrop),
               const SizedBox(width: 6),
               // ★ 缩放按钮
               _tb(Icons.zoom_out, '缩小', () {

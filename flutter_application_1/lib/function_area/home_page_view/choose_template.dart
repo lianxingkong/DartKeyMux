@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:flutter_application_1/function_area/services/template_service.dart';
+import 'package:flutter_application_1/function_area/sidebar/theme_colors.dart';
 import 'package:flutter_application_1/function_area/floating_window/create_template_page.dart';
 import 'package:flutter_application_1/function_area/floating_window/create_mouse_move_page.dart';
 import '../all_template/base/template_document.dart';
@@ -39,9 +40,13 @@ class _ChooseTemplateState extends State<ChooseTemplate> {
               child: Container(
                 height: 400,
                 decoration: BoxDecoration(
-                  color: isMouse
-                      ? const Color.fromARGB(255, 243, 225, 202) // 鼠标模板：暖色底
-                      : const Color.fromARGB(255, 202, 225, 243), // 键盘模板：冷色底
+                  color: AppTheme.isDark.value
+                      ? (isMouse
+                          ? const Color(0xFF4A3020)
+                          : const Color(0xFF1E3A5F))
+                      : (isMouse
+                          ? const Color.fromARGB(255, 243, 225, 202)
+                          : const Color.fromARGB(255, 202, 225, 243)),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Stack(

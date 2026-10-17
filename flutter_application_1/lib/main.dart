@@ -9,6 +9,7 @@ import 'package:flutter_application_1/function_area/services/connect_grc.dart';
 import 'package:flutter_application_1/function_area/all_template/player_template/custom_play_page.dart';
 import 'package:flutter_application_1/function_area/all_template/player_template/custom_mouse_play_page.dart';
 import 'package:flutter_application_1/function_area/sidebar/connect_state.dart';
+import 'package:flutter_application_1/function_area/sidebar/theme_colors.dart';
 import './app_config.dart';
 
 
@@ -44,9 +45,20 @@ class MainApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-    home: _MainInterface(),
-      debugShowCheckedModeBanner: false,
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppTheme.isDark,
+      builder: (context, dark, _) {
+        return MaterialApp(
+          themeMode: dark ? ThemeMode.dark : ThemeMode.light,
+          darkTheme: ThemeData.dark().copyWith(
+            scaffoldBackgroundColor: const Color(0xFF1A1A2E),
+            appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF252540)),
+            cardColor: const Color(0xFF252540),
+          ),
+          home: _MainInterface(),
+          debugShowCheckedModeBanner: false,
+        );
+      },
     );
   }
 }
@@ -98,7 +110,7 @@ class __MainInterfaceState extends State<_MainInterface> {
               ],
             ),
         drawer: const MainSidebarMenu(),  // 侧边栏菜单
-        body: const ChooseTemplate(),   // 主界面模板展示选择
+        body: ChooseTemplate(),   // 去 const 使暗色切换即时刷新卡片
         floatingActionButton: Padding(    // 悬浮窗控件
           padding: EdgeInsets.only(bottom: 40, left: 14),
           child: const FloatButton()

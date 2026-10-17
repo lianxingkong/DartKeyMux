@@ -1,6 +1,33 @@
 import 'dart:convert';
 import 'key_widget.dart';
 
+/// ── 按键联立映射规则 ──
+/// 当 triggerKey 被按下（不松开）时，targetKey 对应的组件映射键临时变为 newKey。
+/// 松开 triggerKey 时恢复原映射。若 target 已经处于按下状态则不触发。
+class KeyChain {
+  const KeyChain({
+    required this.triggerKey,
+    required this.targetKey,
+    required this.newKey,
+  });
+
+  final String triggerKey; // 触发条件：此键按下
+  final String targetKey;  // 被联立的组件原映射键
+  final String newKey;     // 临时变为的键
+
+  Map<String, dynamic> toMap() => {
+        'tk': triggerKey,
+        'tg': targetKey,
+        'nk': newKey,
+      };
+
+  factory KeyChain.fromMap(Map<String, dynamic> m) => KeyChain(
+        triggerKey: (m['tk'] as String?) ?? '',
+        targetKey: (m['tg'] as String?) ?? '',
+        newKey: (m['nk'] as String?) ?? '',
+      );
+}
+
 /// 模板文档。列表顺序即 z 顺序（后创建 = 上层，渲染与命中同规则）。
 /// 对外 API（name / toJson / fromJson）与现有 TemplateService 完全兼容。
 ///
@@ -10,9 +37,12 @@ class TemplateDraft {
   const TemplateDraft({
     required this.name,
     required this.widgets,
-    this.type = 'keyboard',      // 'keyboard' 或 'mouse'
-    this.sensitivity = 1.0,     // 仅鼠标模板使用
-    this.mouseMode = 0,         // 仅鼠标模板使用：0=拖动, 1=点击
+    this.type = 'keyboard',        // 'keyboard' 或 'mouse'
+    this.sensitivity = 1.0,       // 仅鼠标模板使用
+    this.mouseMode = 0,           // 仅鼠标模板使用：0=拖动, 1=点击
+    this.backgroundImage,         // ★ 背景图片路径
+    this.backgroundOpacity = 1.0, // ★ 背景透明度 0..1
+    this.chains = const [],       // ★ 按键联立链
   });
 
   final String name;
@@ -27,8 +57,20 @@ class TemplateDraft {
   /// 鼠标触控模式（仅 mouse 类型有效）：0 = 拖动模式, 1 = 点击模式
   final int mouseMode;
 
+  /// ★ 背景图片（本地文件路径）
+  final String? backgroundImage;
+
+  /// ★ 背景透明度
+  final double backgroundOpacity;
+
   bool get isMouse => type == 'mouse';
   bool get isKeyboard => type != 'mouse';
+  bool get hasBackground => backgroundImage != null && backgroundImage!.isNotEmpty;
+
+  /// ★ 按键联立映射链
+  final List<KeyChain> chains;
+
+  bool get hasChains => chains.isNotEmpty;
 
   Map<String, dynamic> toJson() {
     final m = <String, dynamic>{
@@ -41,6 +83,14 @@ class TemplateDraft {
       m['type'] = type;
       m['sensitivity'] = sensitivity;
       m['mouseMode'] = mouseMode;
+    }
+    // ★ 背景图
+    if (backgroundImage != null && backgroundImage!.isNotEmpty) {
+      m['bgImg'] = backgroundImage;
+      m['bgOpacity'] = backgroundOpacity;
+    }
+    if (chains.isNotEmpty) {
+      m['chains'] = [for (final c in chains) c.toMap()];
     }
     return m;
   }
@@ -71,6 +121,13 @@ class TemplateDraft {
       type: t,
       sensitivity: (m['sensitivity'] as num?)?.toDouble() ?? 1.0,
       mouseMode: (m['mouseMode'] as int?) ?? 0,
+      backgroundImage: m['bgImg'] as String?,
+      backgroundOpacity:
+          (m['bgOpacity'] as num?)?.toDouble().clamp(0.0, 1.0) ?? 1.0,
+      chains: [
+        for (final c in (m['chains'] as List<dynamic>? ?? []))
+          KeyChain.fromMap(c as Map<String, dynamic>),
+      ],
     );
   }
 
@@ -81,6 +138,8 @@ class TemplateDraft {
     String? type,
     double? sensitivity,
     int? mouseMode,
+    String? backgroundImage,
+    double? backgroundOpacity,
   }) =>
       TemplateDraft(
         name: name ?? this.name,
@@ -88,5 +147,7 @@ class TemplateDraft {
         type: type ?? this.type,
         sensitivity: sensitivity ?? this.sensitivity,
         mouseMode: mouseMode ?? this.mouseMode,
+        backgroundImage: backgroundImage ?? this.backgroundImage,
+        backgroundOpacity: backgroundOpacity ?? this.backgroundOpacity,
       );
 }

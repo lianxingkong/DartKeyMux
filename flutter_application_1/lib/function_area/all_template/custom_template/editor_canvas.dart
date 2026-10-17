@@ -173,49 +173,42 @@ class _EditorItem extends StatelessWidget {
               ),
             ),
             if (selected) ...[
-              // 旋转柄：本体正上方（居中）
+              // 旋转柄
               Positioned(
                 left: boxW / 2 - 17,
                 top: boxH / 2 - hp / 2 - 51,
-                width: 34,
-                height: 34,
+                width: 34, height: 34,
                 child: _Handle(
-                  icon: Icons.rotate_90_degrees_ccw_outlined,
-                  onPan: (gp) => onRotate(gp),
-                ),
+                    icon: Icons.rotate_90_degrees_ccw_outlined,
+                    onPan: (gp) => onRotate(gp)),
               ),
-              // 宽度缩放柄：本体右侧边缘居中
-              Positioned(
-                left: boxW / 2 + wp / 2 + 17,
-                top: boxH / 2 - 17,
-                width: 34,
-                height: 34,
-                child: _Handle(
-                  icon: Icons.swap_horiz,
-                  onPan: (gp) => onResize(gp, ResizeMode.width),
+              // ★ 摇杆只允许等比缩放，不显示单独的宽/高柄
+              if (w.shape != KShape.joystick) ...[
+                Positioned(
+                  left: boxW / 2 + wp / 2 + 17,
+                  top: boxH / 2 - 17,
+                  width: 34, height: 34,
+                  child: _Handle(
+                      icon: Icons.swap_horiz,
+                      onPan: (gp) => onResize(gp, ResizeMode.width)),
                 ),
-              ),
-              // 高度缩放柄：本体下侧边缘居中
-              Positioned(
-                left: boxW / 2 - 17,
-                top: boxH / 2 + hp / 2 + 17,
-                width: 34,
-                height: 34,
-                child: _Handle(
-                  icon: Icons.swap_vert,
-                  onPan: (gp) => onResize(gp, ResizeMode.height),
+                Positioned(
+                  left: boxW / 2 - 17,
+                  top: boxH / 2 + hp / 2 + 17,
+                  width: 34, height: 34,
+                  child: _Handle(
+                      icon: Icons.swap_vert,
+                      onPan: (gp) => onResize(gp, ResizeMode.height)),
                 ),
-              ),
-              // 等比缩放柄：右下角外侧（沿本地 45° 对角线）
+              ],
+              // 等比缩放柄（摇杆也有）
               Positioned(
                 left: boxW / 2 + wp / 2 + 17,
                 top: boxH / 2 + hp / 2 + 17,
-                width: 34,
-                height: 34,
+                width: 34, height: 34,
                 child: _Handle(
-                  icon: Icons.open_in_full,
-                  onPan: (gp) => onResize(gp, ResizeMode.uniform),
-                ),
+                    icon: Icons.open_in_full,
+                    onPan: (gp) => onResize(gp, ResizeMode.uniform)),
               ),
             ],
           ],
