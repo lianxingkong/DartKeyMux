@@ -33,6 +33,15 @@ class MouseTouchEngine {
   int mouseMode;       // 0=拖动, 1=触控板
   int dragButton;      // 拖动模式下的按键：0=左, 1=右, 2=中
 
+  /// ★ 仅移动模式（混合模板的鼠标底层使用）。
+  ///
+  /// 开启后：
+  ///   • 只发送光标 MOVE，**不发送任何点击**（无 DOWN/UP、无轻触点击）
+  ///   • **忽略全部多指事件**（不发滚轮、不触发中键/右键）
+  ///   • 灵敏度与圆点显示照常
+  /// 用于"键盘组件叠在鼠标触控上"的场景，避免编辑/游玩时误触点击。
+  bool moveOnly;
+
   // ── 指针追踪（多点触控）──
   final Map<int, MousePointer> ptrs = <int, MousePointer>{};
   int activeFingerCount = 0;
@@ -51,10 +60,29 @@ class MouseTouchEngine {
     this.sensitivity = 1.0,
     this.mouseMode = 0,
     this.dragButton = 0,
+    this.moveOnly = false,
   });
 
   void dispose() {
     fingerPos.dispose();
+  }
+
+  /// ★ 中止所有进行中的鼠标指针，并释放已按下的按键。
+  ///
+  /// 供「混合模板编辑器」在检测到双指（画布缩放）时收回鼠标层控制，
+  /// 避免缩放画布的同时把滚轮/拖动事件误发给电脑。
+  /// 纯新增方法，不改变任何原有触控逻辑。
+  void releaseAll() {
+    for (final ptr in ptrs.values) {
+      if (ptr.dragActivated) {
+        final btn = mouseMode == 0 ? dragButton : 0;
+        send(upOf(btn), 0, 0, 0);
+      }
+    }
+    ptrs.clear();
+    activeFingerCount = 0;
+    dotFinger = -1;
+    fingerPos.value = null;
   }
 
   // ════════════════════════════════════════════
@@ -116,6 +144,9 @@ class MouseTouchEngine {
       fingerPos.value = curPos;
     }
 
+    // ★ 仅移动模式：不发送任何按键，只等 MOVE
+    if (moveOnly) return;
+
     if (mouseMode == 0) {
       onDownDrag(ptr);
     }
@@ -125,6 +156,18 @@ class MouseTouchEngine {
   void onMove(PointerMoveEvent e) {
     final ptr = ptrs[e.pointer];
     if (ptr == null) return;
+
+    // ★ 仅移动模式：只允许"单指移动光标"，多指一律忽略（不发滚轮/不点击）
+    if (moveOnly) {
+      if (activeFingerCount == 1) {
+        sendDelta(MouseEvent_EventType.MOVE, e.delta);
+      }
+      if (e.pointer == dotFinger) {
+        curPos += e.delta;
+        fingerPos.value = curPos;
+      }
+      return;
+    }
 
     if (mouseMode == 0) {
       final dist = (e.position - ptr.downPos).distance;
@@ -151,6 +194,9 @@ class MouseTouchEngine {
       dotFinger = ptrs.keys.firstOrNull ?? -1;
     }
 
+    // ★ 仅移动模式：抬手不产生任何点击
+    if (moveOnly) return;
+
     if (mouseMode == 0) {
       onUpDrag(ptr, wasCount);
     } else {
@@ -162,6 +208,13 @@ class MouseTouchEngine {
     final ptr = ptrs.remove(e.pointer);
     if (ptr == null) return;
     activeFingerCount = ptrs.length;
+    // ★ 仅移动模式：从不会有按下状态，只需清理圆点归属
+    if (moveOnly) {
+      if (e.pointer == dotFinger) {
+        dotFinger = ptrs.keys.firstOrNull ?? -1;
+      }
+      return;
+    }
     if (ptr.dragActivated) {
       // 拖动中的指针被取消 → 释放按键防止按钮卡死
       final btn = mouseMode == 0 ? dragButton : 0; // 拖动模式用自定义键，触控板默认左键
@@ -342,8 +395,8 @@ class MouseTouchEngine {
                 children: [
                   // 标题
                   Row(children: [
-                    const Text('触控板设置',
-                        style: TextStyle(
+                    Text(moveOnly ? '鼠标底层设置' : '触控板设置',
+                        style: const TextStyle(
                             fontSize: 18, fontWeight: FontWeight.bold)),
                     const Spacer(),
                     IconButton(
@@ -354,36 +407,39 @@ class MouseTouchEngine {
                   ]),
                   const Divider(),
 
-                  // ── 功能 1：模式选择 ──
-                  const Text('触控模式',
-                      style: TextStyle(fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 8),
-                  Row(children: [
-                    Expanded(
-                      child: _sharedModeBtn(
-                          '拖动', Icons.touch_app, 0, mouseMode == 0, onChanged),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _sharedModeBtn('触板', Icons.tap_and_play, 1,
-                          mouseMode == 1, onChanged),
-                    ),
-                  ]),
-                  const SizedBox(height: 16),
-
-                  // ── 功能 2：拖动按键选择（仅拖动模式可见）──
-                  if (mouseMode == 0) ...[
-                    const Text('拖动按键',
+                  // ★ 仅移动模式：模式与按键均固定，不显示选择项
+                  if (!moveOnly) ...[
+                    // ── 功能 1：模式选择 ──
+                    const Text('触控模式',
                         style: TextStyle(fontWeight: FontWeight.w600)),
                     const SizedBox(height: 8),
                     Row(children: [
-                      _sharedBtnChip('左键', 0, dragButton == 0, onChanged),
-                      const SizedBox(width: 6),
-                      _sharedBtnChip('右键', 1, dragButton == 1, onChanged),
-                      const SizedBox(width: 6),
-                      _sharedBtnChip('中键', 2, dragButton == 2, onChanged),
+                      Expanded(
+                        child: _sharedModeBtn('拖动', Icons.touch_app, 0,
+                            mouseMode == 0, onChanged),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _sharedModeBtn('触板', Icons.tap_and_play, 1,
+                            mouseMode == 1, onChanged),
+                      ),
                     ]),
                     const SizedBox(height: 16),
+
+                    // ── 功能 2：拖动按键选择（仅拖动模式可见）──
+                    if (mouseMode == 0) ...[
+                      const Text('拖动按键',
+                          style: TextStyle(fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 8),
+                      Row(children: [
+                        _sharedBtnChip('左键', 0, dragButton == 0, onChanged),
+                        const SizedBox(width: 6),
+                        _sharedBtnChip('右键', 1, dragButton == 1, onChanged),
+                        const SizedBox(width: 6),
+                        _sharedBtnChip('中键', 2, dragButton == 2, onChanged),
+                      ]),
+                      const SizedBox(height: 16),
+                    ],
                   ],
 
                   // ── 功能 3：灵敏度 ──
@@ -415,12 +471,16 @@ class MouseTouchEngine {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      mouseMode == 0
-                          ? '拖动模式：单指按拖动按键，双指滚轮，三指中键拖动'
-                          : '触控板：模拟笔记本电脑触控板\n'
-                            '单指移动=光标 · 单指轻触=左键\n'
-                            '按住后移动=拖动 · 双指=滚轮\n'
-                            '双指轻触=右键 · 三指轻触=中键',
+                      moveOnly
+                          ? '仅光标移动：单指滑动=移动光标\n'
+                            '不发送任何点击，多指操作已禁用\n'
+                            '（键盘组件之外的区域才会触发）'
+                          : mouseMode == 0
+                              ? '拖动模式：单指按拖动按键，双指滚轮，三指中键拖动'
+                              : '触控板：模拟笔记本电脑触控板\n'
+                                '单指移动=光标 · 单指轻触=左键\n'
+                                '按住后移动=拖动 · 双指=滚轮\n'
+                                '双指轻触=右键 · 三指轻触=中键',
                       style:
                           TextStyle(fontSize: 12, color: Colors.grey.shade700),
                     ),

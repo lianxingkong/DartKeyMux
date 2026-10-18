@@ -8,7 +8,8 @@ class AppConfig {
   static final ValueNotifier<int> grpcPort =
       ValueNotifier(50051);
 
-  /// 实验性功能总开关（第6条摇杆组件、按键映射表等受此控制）
+  /// 实验性功能总开关
+  /// 受控项：摇杆组件、按键映射表、按键联立、混合模板（鼠标底层 + 键盘组件）
   static final ValueNotifier<bool> experimentalMode =
       ValueNotifier<bool>(false);
 }

@@ -340,24 +340,16 @@ class _OrientationButtons extends StatelessWidget {
           const SizedBox(width: 6),
           _btn(Icons.stay_primary_landscape, '横屏',
               [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]),
-          const SizedBox(width: 6),
-          _btn(Icons.screen_lock_portrait_outlined, '自动', null),
         ],
       ),
     );
   }
 
-  Widget _btn(IconData icon, String tooltip, List<DeviceOrientation>? orientations) {
+  Widget _btn(IconData icon, String tooltip, List<DeviceOrientation> orientations) {
     return IconButton(
       icon: Icon(icon, size: 22),
       tooltip: tooltip,
-      onPressed: () {
-        if (orientations == null) {
-          SystemChrome.setPreferredOrientations(DeviceOrientation.values);
-        } else {
-          SystemChrome.setPreferredOrientations(orientations);
-        }
-      },
+      onPressed: () => SystemChrome.setPreferredOrientations(orientations),
     );
   }
 }

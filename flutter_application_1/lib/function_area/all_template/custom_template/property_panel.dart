@@ -174,6 +174,17 @@ class _SheetBodyState extends State<_SheetBody> {
               },
             ),
 
+            // ★ 是否显示按键文本
+            Row(children: [
+              const Text('显示按键文本'),
+              const SizedBox(width: 8),
+              Switch(
+                value: cur.showKeyLabel,
+                onChanged: (v) =>
+                    _apply(cur.copyWith(showKeyLabel: v)),
+              ),
+            ]),
+
             // ★ 组件图片（摇杆不支持组件图片）
             if (cur.shape != KShape.joystick) ...[
               _label('组件图片'),
@@ -226,7 +237,7 @@ class _SheetBodyState extends State<_SheetBody> {
             ],
             // ★ 摇杆专属属性
             if (cur.shape == KShape.joystick) ...[
-              _label('摇杆方向键映射'),
+              _label('方向键映射'),
               _joyKeyField('上方向', cur.joyUpKey,
                   (v) => _apply(cur.copyWith(joyUpKey: v))),
               _joyKeyField('下方向', cur.joyDownKey,
@@ -235,19 +246,48 @@ class _SheetBodyState extends State<_SheetBody> {
                   (v) => _apply(cur.copyWith(joyLeftKey: v))),
               _joyKeyField('右方向', cur.joyRightKey,
                   (v) => _apply(cur.copyWith(joyRightKey: v))),
-              _joyKeyField('内圈（按下触发）', cur.joyInnerKey,
+              const SizedBox(height: 8),
+              _label('中圈映射键（超出中圈时追加按下，如 shift）'),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  '例：方向键=up，中圈键=shift → 中圈内为 up，'
+                  '推出中圈自动变 shift+up（轻推走路 / 重推奔跑）。留空则不追加。',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
+              ),
+              _joyKeyField('中圈键', cur.joyMidKey,
+                  (v) => _apply(cur.copyWith(joyMidKey: v))),
+              const SizedBox(height: 8),
+              _joyKeyField('内圈（死区按下，可空）', cur.joyInnerKey,
                   (v) => _apply(cur.copyWith(joyInnerKey: v))),
-              _label('内圈大小（灵敏度）'),
+              _label('内圈大小（死区半径）'),
               Row(children: [
                 Expanded(
                   child: Slider(
-                    value: cur.joyInnerRadius,
-                    min: 0.1, max: 0.8, divisions: 7,
+                    value: cur.joyInnerRadius.clamp(0.1, 0.5),
+                    min: 0.1, max: 0.5, divisions: 8,
                     onChanged: (v) =>
                         _apply(cur.copyWith(joyInnerRadius: v)),
                   ),
                 ),
                 Text('${(cur.joyInnerRadius * 100).round()}%',
+                    style: const TextStyle(fontSize: 12)),
+              ]),
+              _label('中圈大小（轻推/重推分界，虚线）'),
+              Row(children: [
+                Expanded(
+                  child: Slider(
+                    value: cur.joyMidRadius.clamp(
+                        (cur.joyInnerRadius + 0.1).clamp(0.2, 0.9), 0.95),
+                    min: (cur.joyInnerRadius + 0.1).clamp(0.2, 0.9),
+                    max: 0.95,
+                    divisions: 15,
+                    onChanged: (v) =>
+                        _apply(cur.copyWith(joyMidRadius: v)),
+                  ),
+                ),
+                Text('${(cur.joyMidRadius * 100).round()}%',
                     style: const TextStyle(fontSize: 12)),
               ]),
             ],

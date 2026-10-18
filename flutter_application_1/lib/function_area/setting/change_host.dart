@@ -29,7 +29,6 @@ class ChangeHost extends StatefulWidget {
 class _ChangHost extends State<ChangeHost> {
   late final TextEditingController _hostController;
   late final TextEditingController _portController;
-  String? _hostError;
   String? _portError;
 
   @override
@@ -57,31 +56,6 @@ class _ChangHost extends State<ChangeHost> {
 
   // ── 输入校验 ──
 
-  bool _validateHost(String v) {
-    final t = v.trim();
-    if (t.isEmpty) {
-      _hostError = '主机地址不能为空';
-      return false;
-    }
-    if (t == 'localhost') { _hostError = null; return true; }
-
-    final ip = t.split('.');
-    if (ip.length == 4) {
-      for (final p in ip) {
-        final n = int.tryParse(p);
-        if (n == null || n < 0 || n > 255) { _hostError = 'IP 每段 0-255'; return false; }
-      }
-      _hostError = null;
-      return true;
-    }
-    if (RegExp(r'^[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?$').hasMatch(t)) {
-      _hostError = null;
-      return true;
-    }
-    _hostError = '格式：IP / localhost / 主机名';
-    return false;
-  }
-
   bool _validatePort(String v) {
     final n = int.tryParse(v.trim());
     if (n == null || n < 1 || n > 65535) {
@@ -95,15 +69,15 @@ class _ChangHost extends State<ChangeHost> {
   // ── 应用并重连 ──
 
   void _apply() {
-    final hostOk = _validateHost(_hostController.text);
     final portOk = _validatePort(_portController.text);
     setState(() {});
-    if (!hostOk || !portOk) return;
+    if (!portOk) return;
 
-    final newHost = _hostController.text.trim();
+    // 主机地址固定不可改，始终取当前配置值
+    final newHost = widget.valueHost.value;
     final newPort = int.parse(_portController.text.trim());
 
-    // 1) 更新全局配置
+    // 1) 更新全局配置（只更新端口）
     widget.valueUpdateHost(newHost);
     widget.valueUpdatePort(newPort);
 
@@ -116,32 +90,44 @@ class _ChangHost extends State<ChangeHost> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // ── 端口行（保留原有 compact 横排风格）──
+        // ── 主机行：只读展示（地址固定，不可修改）──
         Row(
           children: [
             const Text('主机地址', style: TextStyle(fontSize: 15)),
             const Spacer(),
             SizedBox(
-              width: 180,
+              width: 200,
               child: TextField(
                 controller: _hostController,
-                textInputAction: TextInputAction.next,
+                readOnly: true,          // ★ 不可更改（弹出键盘也不会出现）
+                enableInteractiveSelection: true, // 仍可长按复制，方便查看
                 textAlign: TextAlign.center,
                 decoration: InputDecoration(
                   isDense: true,
+                  filled: true,
+                  fillColor: Colors.grey.withValues(alpha: 0.12),
                   contentPadding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8)),
-                  hintText: '例：192.168.1.100',
-                  errorText: _hostError,
+                  // 明确的"固定"语义
+                  suffixIcon: const Icon(Icons.lock_outline, size: 16),
+                  suffixIconConstraints:
+                      const BoxConstraints(minWidth: 30, minHeight: 30),
                 ),
-                onChanged: (_) {
-                  if (_hostError != null) setState(() => _validateHost(_hostController.text));
-                },
               ),
             ),
           ],
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              '主机地址已固定，如需更改请重新编译',
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+            ),
+          ),
         ),
         const SizedBox(height: 8),
         // ── 端口行 ──

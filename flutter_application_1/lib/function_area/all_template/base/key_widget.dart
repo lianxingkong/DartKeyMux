@@ -40,6 +40,10 @@ class KeyWidget {
     this.joyLeftKey = 'left',    // 左方向映射键
     this.joyRightKey = 'right',  // 右方向映射键
     this.joyInnerKey = '',       // 内圈按下映射键（空=不触发）
+    // ★ 中圈分段映射（轻推/重推）
+    this.joyMidRadius = 0.6,     // 中圈半径占比（虚线分界）
+    this.joyMidKey = '',         // 中圈映射键：超出中圈时追加按下（如 shift）
+    this.showKeyLabel = true,   // ★ 默认显示按键文本
   }) : assert(size != null || (sizeW != null && sizeH != null),
             '必须提供 size 或同时提供 sizeW 与 sizeH') {
     if (size != null) {
@@ -78,17 +82,22 @@ class KeyWidget {
   final Color? pressedColor; // 可选：按下色（不填自动派生）
   final String? imagePath;   // ★ 组件内图片
   final double imageOpacity;  // ★ 图片透明度 0..1
-  final double imageDx;       // ★ 图片水平偏移（px），裁剪定位
-  final double imageDy;       // ★ 图片垂直偏移（px）
+  final double imageDx;       // ★ 图片水平偏移（归一化：相对组件宽的比例，0=居中）
+  final double imageDy;       // ★ 图片垂直偏移（归一化：相对组件高的比例）
   final double imageScale;    // ★ 图片缩放比，默认 1.0
+  final bool showKeyLabel;    // ★ 是否显示映射按键文本（默认 true）
 
   // ── 摇杆属性 ──
-  final double joyInnerRadius;   // 内圈半径占比
+  final double joyInnerRadius;   // 内圈半径占比（死区）
+  final double joyMidRadius;     // ★ 中圈半径占比（轻推/重推分界，虚线）
   final String joyUpKey;         // 上方向
   final String joyDownKey;       // 下方向
   final String joyLeftKey;       // 左方向
   final String joyRightKey;      // 右方向
-  final String joyInnerKey;      // 中心按下
+  final String joyInnerKey;      // 中心按下（死区触发）
+  /// ★ 中圈映射键：手指超出中圈距离时追加按下（如 shift → 组合成 shift+up）
+  ///   为空则不追加任何键。
+  final String joyMidKey;
 
   double get rotationRad => rotation * math.pi / 180;
 
@@ -99,8 +108,11 @@ class KeyWidget {
     bool clearIdle = false, bool clearPressed = false,
     String? imagePath, double? imageOpacity, bool clearImage = false,
     double? imageDx, double? imageDy, double? imageScale,
-    double? joyInnerRadius, String? joyUpKey, String? joyDownKey,
+    double? joyInnerRadius, double? joyMidRadius,
+    String? joyUpKey, String? joyDownKey,
     String? joyLeftKey, String? joyRightKey, String? joyInnerKey,
+    String? joyMidKey,
+    bool? showKeyLabel,
   }) {
     final w = KeyWidget(
       id: id, shape: shape ?? this.shape, key: key ?? this.key,
@@ -116,11 +128,14 @@ class KeyWidget {
       imageDy: imageDy ?? this.imageDy,
       imageScale: imageScale ?? this.imageScale,
       joyInnerRadius: joyInnerRadius ?? this.joyInnerRadius,
+      joyMidRadius: joyMidRadius ?? this.joyMidRadius,
       joyUpKey: joyUpKey ?? this.joyUpKey,
       joyDownKey: joyDownKey ?? this.joyDownKey,
       joyLeftKey: joyLeftKey ?? this.joyLeftKey,
       joyRightKey: joyRightKey ?? this.joyRightKey,
       joyInnerKey: joyInnerKey ?? this.joyInnerKey,
+      joyMidKey: joyMidKey ?? this.joyMidKey,
+      showKeyLabel: showKeyLabel ?? this.showKeyLabel,
     );
     if (size != null) {
       w._sizeW = size;
@@ -187,12 +202,15 @@ class KeyWidget {
     },
     if (shape == KShape.joystick) ...{
       'jr': joyInnerRadius,
+      'jmr': joyMidRadius,
       'jup': joyUpKey,
       'jdn': joyDownKey,
       'jlt': joyLeftKey,
       'jrt': joyRightKey,
       'jin': joyInnerKey,
+      if (joyMidKey.isNotEmpty) 'jmk': joyMidKey,
     },
+    if (!showKeyLabel) 'hideKey': true,  // 默认 true → 省略以精简存档
     };
 
   /// fromMap 同时承担"导入 sanitize"：所有量钳制到安全范围
@@ -214,17 +232,29 @@ class KeyWidget {
       pressedColor: m['c1'] == null ? null : Color(m['c1'] as int),
       imagePath: m['img'] as String?,
       imageOpacity: (m['imgOp'] as num?)?.toDouble().clamp(0.0, 1.0) ?? 1.0,
-      imageDx: (m['imgDx'] as num?)?.toDouble() ?? 0,
-      imageDy: (m['imgDy'] as num?)?.toDouble() ?? 0,
+      imageDx: _sanitizeImageOffset((m['imgDx'] as num?)?.toDouble() ?? 0),
+      imageDy: _sanitizeImageOffset((m['imgDy'] as num?)?.toDouble() ?? 0),
       imageScale: (m['imgSc'] as num?)?.toDouble() ?? 1.0,
       joyInnerRadius:
           (m['jr'] as num?)?.toDouble().clamp(0.1, 0.8) ?? 0.3,
+      joyMidRadius:
+          (m['jmr'] as num?)?.toDouble().clamp(0.2, 0.95) ?? 0.6,
       joyUpKey: (m['jup'] as String?) ?? 'up',
       joyDownKey: (m['jdn'] as String?) ?? 'down',
       joyLeftKey: (m['jlt'] as String?) ?? 'left',
       joyRightKey: (m['jrt'] as String?) ?? 'right',
       joyInnerKey: (m['jin'] as String?) ?? '',
+      joyMidKey: (m['jmk'] as String?) ?? '',
+      showKeyLabel: !(m['hideKey'] as bool? ?? false),
     );
+  }
+
+  /// 兼容旧存档：旧版 imageDx/imageDy 为绝对像素（典型值 10~200），
+  /// 新版为归一化值（相对组件宽/高比例，典型值 -2..2）。
+  /// 若检测到超大值（|v| > 5），按旧版预览基准 300px 折算为归一化值。
+  static double _sanitizeImageOffset(double v) {
+    if (v.abs() > 5.0) return v / 300.0;
+    return v;
   }
 
   static int _n = 0;

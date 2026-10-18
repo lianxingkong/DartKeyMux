@@ -4,6 +4,7 @@ import 'package:flutter_application_1/function_area/services/template_service.da
 import 'package:flutter_application_1/function_area/sidebar/theme_colors.dart';
 import 'package:flutter_application_1/function_area/floating_window/create_template_page.dart';
 import 'package:flutter_application_1/function_area/floating_window/create_mouse_move_page.dart';
+import 'package:flutter_application_1/function_area/floating_window/create_mix_template_page.dart';
 import '../all_template/base/template_document.dart';
 import '../all_template/player_template/custom_play_page.dart';
 import '../all_template/player_template/custom_mouse_play_page.dart';
@@ -33,20 +34,38 @@ class _ChooseTemplateState extends State<ChooseTemplate> {
           itemBuilder: (context, index) {
             final draft = TemplateService.instance.draftAt(index);
             final isMouse = draft.isMouse;
+            // ★ 混合模板：鼠标底层 + 键盘组件
+            final isMix = draft.isMix;
+            final dark = AppTheme.isDark.value;
+            final cardColor = dark
+                ? (isMix
+                    ? const Color(0xFF362A4D)
+                    : isMouse
+                        ? const Color(0xFF4A3020)
+                        : const Color(0xFF1E3A5F))
+                : (isMix
+                    ? const Color.fromARGB(255, 226, 216, 243)
+                    : isMouse
+                        ? const Color.fromARGB(255, 243, 225, 202)
+                        : const Color.fromARGB(255, 202, 225, 243));
+            final tagBg = isMix
+                ? Colors.purple.shade100
+                : isMouse
+                    ? Colors.orange.shade100
+                    : Colors.blue.shade100;
+            final tagFg = isMix
+                ? Colors.purple.shade800
+                : isMouse
+                    ? Colors.orange.shade800
+                    : Colors.blue.shade800;
 
             return GestureDetector(
-              // ★ 按类型路由播放页
-              onTap: () => _openPlay(context, draft, isMouse),
+              // ★ 按类型路由播放页（混合模板走键盘播放页，内部自带鼠标底层）
+              onTap: () => _openPlay(context, draft),
               child: Container(
                 height: 400,
                 decoration: BoxDecoration(
-                  color: AppTheme.isDark.value
-                      ? (isMouse
-                          ? const Color(0xFF4A3020)
-                          : const Color(0xFF1E3A5F))
-                      : (isMouse
-                          ? const Color.fromARGB(255, 243, 225, 202)
-                          : const Color.fromARGB(255, 202, 225, 243)),
+                  color: cardColor,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Stack(
@@ -67,19 +86,16 @@ class _ChooseTemplateState extends State<ChooseTemplate> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
-                              color: isMouse
-                                  ? Colors.orange.shade100
-                                  : Colors.blue.shade100,
+                              color: tagBg,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
-                              isMouse ? '🖱️ 鼠标模板' : '⌨️ 键盘模板',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: isMouse
-                                    ? Colors.orange.shade800
-                                    : Colors.blue.shade800,
-                              ),
+                              isMix
+                                  ? '🧩 混合模板'
+                                  : isMouse
+                                      ? '🖱️ 鼠标模板'
+                                      : '⌨️ 键盘模板',
+                              style: TextStyle(fontSize: 11, color: tagFg),
                             ),
                           ),
                         ],
@@ -105,6 +121,19 @@ class _ChooseTemplateState extends State<ChooseTemplate> {
                               if (result == null) return;
                               TemplateService.instance
                                   .updateTemplate(index, result.toJson());
+                            } else if (isMix) {
+                              // ★ 混合模板：走混合编辑器（底层保留鼠标触控）
+                              final result =
+                                  await Navigator.push<TemplateDraft>(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => CreateMixTemplatePage(
+                                      initial: draft, editIndex: index),
+                                ),
+                              );
+                              if (result == null) return;
+                              TemplateService.instance
+                                  .updateTemplate(index, result.toJson());
                             } else {
                               final result =
                                   await Navigator.push<TemplateDraft>(
@@ -125,8 +154,8 @@ class _ChooseTemplateState extends State<ChooseTemplate> {
                           _circleIconBtn(Icons.delete_outline,
                               () => TemplateService.instance.deleteTemplate(
                                   context, index)),
-                          // 鼠标模板不显示分享按钮
-                          if (!isMouse) ...[
+                          // 含鼠标触控层的模板不显示分享按钮
+                          if (!draft.hasMouseLayer) ...[
                             const SizedBox(width: 12),
                             _circleIconBtn(Icons.share,
                                 () => TemplateService.instance.shareTemplate(
@@ -136,8 +165,11 @@ class _ChooseTemplateState extends State<ChooseTemplate> {
                           // 一键置顶：点击不变色，立刻将该模板移到列表最前
                           _circleIconBtn(Icons.vertical_align_top,
                               () => TemplateService.instance.pinToTop(index)),
-                          const SizedBox(width: 12),
-                          _autoStartBtn(index),
+                          // ★ 混合模板只有 编辑 / 删除 / 置顶 三项属性
+                          if (!isMix) ...[
+                            const SizedBox(width: 12),
+                            _autoStartBtn(index),
+                          ],
                         ],
                       ),
                     ),
@@ -153,8 +185,10 @@ class _ChooseTemplateState extends State<ChooseTemplate> {
   }
 
   /// 按类型打开播放页
-  void _openPlay(BuildContext context, TemplateDraft draft, bool isMouse) {
-    if (isMouse) {
+  /// 纯鼠标 → 鼠标播放页；键盘 / 混合 → 键盘播放页
+  /// （混合模板的鼠标底层由键盘播放页内部处理）
+  void _openPlay(BuildContext context, TemplateDraft draft) {
+    if (draft.isMouse) {
       openCustomMousePlayPage(context, draft);
     } else {
       openCustomPlayPage(context, draft);

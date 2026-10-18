@@ -31,13 +31,17 @@ class KeyChain {
 /// 模板文档。列表顺序即 z 顺序（后创建 = 上层，渲染与命中同规则）。
 /// 对外 API（name / toJson / fromJson）与现有 TemplateService 完全兼容。
 ///
-/// ★ 新增 type 字段区分键盘模板('keyboard')与鼠标模板('mouse')，
-///   鼠标模板额外携带 sensitivity / mouseMode 配置。
+/// ★ type 字段区分三种模板：
+///   • 'keyboard' 纯键盘模板（组件映射按键）
+///   • 'mouse'    纯鼠标模板（全屏触控 → 鼠标移动）
+///   • 'mix'      ★ 混合模板：最底层为鼠标移动事件，上层叠放键盘组件。
+///                点击组件 → 键盘逻辑；点击组件以外 → 鼠标逻辑。
+///   鼠标相关模板额外携带 sensitivity / mouseMode 配置。
 class TemplateDraft {
   const TemplateDraft({
     required this.name,
     required this.widgets,
-    this.type = 'keyboard',        // 'keyboard' 或 'mouse'
+    this.type = 'keyboard',        // 'keyboard' | 'mouse' | 'mix'
     this.sensitivity = 1.0,       // 仅鼠标模板使用
     this.mouseMode = 0,           // 仅鼠标模板使用：0=拖动, 1=点击
     this.backgroundImage,         // ★ 背景图片路径
@@ -48,13 +52,13 @@ class TemplateDraft {
   final String name;
   final List<KeyWidget> widgets;
 
-  /// 'keyboard' 或 'mouse' —— 用于主页区分编辑/播放路由
+  /// 'keyboard' | 'mouse' | 'mix' —— 用于主页区分编辑/播放路由
   final String type;
 
-  /// 鼠标灵敏度（仅 mouse 类型有效）
+  /// 鼠标灵敏度（mouse / mix 类型有效）
   final double sensitivity;
 
-  /// 鼠标触控模式（仅 mouse 类型有效）：0 = 拖动模式, 1 = 点击模式
+  /// 鼠标触控模式（mouse / mix 类型有效）：0 = 拖动模式, 1 = 点击模式
   final int mouseMode;
 
   /// ★ 背景图片（本地文件路径）
@@ -63,8 +67,18 @@ class TemplateDraft {
   /// ★ 背景透明度
   final double backgroundOpacity;
 
+  /// 纯鼠标模板（无组件）
   bool get isMouse => type == 'mouse';
-  bool get isKeyboard => type != 'mouse';
+
+  /// ★ 混合模板：鼠标底层 + 键盘组件
+  bool get isMix => type == 'mix';
+
+  /// 含键盘组件的模板（keyboard 或 mix）
+  bool get isKeyboard => !isMouse;
+
+  /// 含鼠标触控层的模板（mouse 或 mix）—— 播放/编辑时是否挂载鼠标引擎
+  bool get hasMouseLayer => isMouse || isMix;
+
   bool get hasBackground => backgroundImage != null && backgroundImage!.isNotEmpty;
 
   /// ★ 按键联立映射链
@@ -140,6 +154,7 @@ class TemplateDraft {
     int? mouseMode,
     String? backgroundImage,
     double? backgroundOpacity,
+    List<KeyChain>? chains,
   }) =>
       TemplateDraft(
         name: name ?? this.name,
@@ -149,5 +164,6 @@ class TemplateDraft {
         mouseMode: mouseMode ?? this.mouseMode,
         backgroundImage: backgroundImage ?? this.backgroundImage,
         backgroundOpacity: backgroundOpacity ?? this.backgroundOpacity,
+        chains: chains ?? this.chains,
       );
 }

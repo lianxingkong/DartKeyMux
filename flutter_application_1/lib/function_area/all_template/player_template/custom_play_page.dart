@@ -5,6 +5,7 @@ import '../base/key_widget.dart';
 import '../base/template_document.dart';
 import '../base/key_widget_view.dart';
 import '../base/floating_control.dart';
+import '../base/mouse_touch_core.dart';
 import '../../services/connect_grc.dart';
 import '../../setting/mapping_key_page.dart';
 
@@ -38,6 +39,25 @@ class _CustomPlayPageState extends State<CustomPlayPage> {
   /// 锁屏状态：锁定时触摸层被 AbsorbPointer 吞掉，防止误触
   bool _locked = false;
 
+  // ════════════════════════════════════════════
+  //  ★ 混合模板：组件以外的区域交给鼠标触控引擎
+  // ════════════════════════════════════════════
+
+  /// 非空表示当前模板带鼠标底层（mix）
+  ///
+  /// ★ 混合模板的底层**固定为触控板「只移动」模式**：
+  ///   不发送任何点击 / 滚轮，忽略多指，避免游玩时误触。
+  late final MouseTouchEngine? _mouse = widget.draft.isMix
+      ? MouseTouchEngine(
+          sensitivity: widget.draft.sensitivity,
+          mouseMode: 1,
+          moveOnly: true,
+        )
+      : null;
+
+  /// 归属鼠标层的指针 id
+  final Set<int> _mousePtrs = <int>{};
+
   @override
   void initState() {
     super.initState();
@@ -46,6 +66,7 @@ class _CustomPlayPageState extends State<CustomPlayPage> {
 
   @override
   void dispose() {
+    _mouse?.dispose();
     final heldKeys = <String>{ for (final w in _active.values) w.key };
     // ★ 补发摇杆释放
     for (final dirs in _joyDirs.values) {
@@ -67,6 +88,12 @@ class _CustomPlayPageState extends State<CustomPlayPage> {
   }
 
   /// ★ 摇杆：根据手指位置更新方向键
+  ///
+  /// 逻辑（原始版本 + 中圈分段）：
+  ///   1. 方向键：按 nx / ny 超过阈值触发（与距离无关）
+  ///   2. 内圈键：手指在内圈半径内时触发（可空）
+  ///   3. ★ 中圈键：手指**超出中圈半径**时额外按下（如 shift）
+  ///      → 中圈内 = up，推出中圈 = shift + up
   void _joyUpdate(
       int ptr, KeyWidget w, Offset pos, Size s, Set<String> prev) {
     final c = w.centerPx(s);
@@ -74,21 +101,26 @@ class _CustomPlayPageState extends State<CustomPlayPage> {
     final d = pos - c;
     final dist = d.distance;
     final innerR = w.joyInnerRadius * outerR;
+    final midR = w.joyMidRadius * outerR;
 
     // 归一化偏移
     final nx = (d.dx / outerR).clamp(-1.0, 1.0);
     final ny = (d.dy / outerR).clamp(-1.0, 1.0);
     _joyOffsets[w.id] = Offset(nx, ny);
 
-    // 判四个方向（deadzone 0.3）
     final cur = <String>{};
+
+    // 1. 方向键（deadzone 0.3，原始逻辑）
     if (nx > 0.3 && w.joyRightKey.isNotEmpty) cur.add(w.joyRightKey);
     if (nx < -0.3 && w.joyLeftKey.isNotEmpty) cur.add(w.joyLeftKey);
     if (ny > 0.3 && w.joyDownKey.isNotEmpty) cur.add(w.joyDownKey);
     if (ny < -0.3 && w.joyUpKey.isNotEmpty) cur.add(w.joyUpKey);
 
-    // 内圈按下
+    // 2. 内圈按下（原始逻辑）
     if (dist <= innerR && w.joyInnerKey.isNotEmpty) cur.add(w.joyInnerKey);
+
+    // 3. ★ 中圈分段：超出中圈 → 追加修饰键（shift 等）
+    if (dist > midR && w.joyMidKey.isNotEmpty) cur.add(w.joyMidKey);
 
     // 发送变化
     for (final k in cur.difference(prev)) {
@@ -122,10 +154,17 @@ class _CustomPlayPageState extends State<CustomPlayPage> {
       body: LayoutBuilder(builder: (context, cons) {
         final s = cons.biggest;
 
-        void down(PointerEvent e) {
+        void down(PointerDownEvent e) {
           if (_locked) return;
           final w = _hitTop(e.position, s);
-          if (w == null) return;
+          if (w == null) {
+            // ★ 混合模板：组件以外的区域 → 执行鼠标模板逻辑
+            if (_mouse != null) {
+              _mousePtrs.add(e.pointer);
+              _mouse.onDown(e);
+            }
+            return;
+          }
           _active[e.pointer] = w;
           _pressedIds.add(w.id);
           if (w.shape == KShape.joystick) {
@@ -139,6 +178,12 @@ class _CustomPlayPageState extends State<CustomPlayPage> {
 
             // ★ 按键联立：检查是否有链以当前键为触发
             for (final chain in widget.draft.chains) {
+              // 三项任一为空 → 该规则未配置完整，跳过
+              if (chain.triggerKey.isEmpty ||
+                  chain.targetKey.isEmpty ||
+                  chain.newKey.isEmpty) {
+                continue;
+              }
               if (chain.triggerKey != sendKey) continue;
               // 找到目标组件（匹配原始映射键）
               final target = widget.draft.widgets
@@ -155,7 +200,13 @@ class _CustomPlayPageState extends State<CustomPlayPage> {
           setState(() {});
         }
 
-        void move(PointerEvent e) {
+        void move(PointerMoveEvent e) {
+          // ★ 混合模板：鼠标层指针
+          if (_mousePtrs.contains(e.pointer)) {
+            _mouse?.onMove(e);
+            setState(() {});
+            return;
+          }
           final w = _active[e.pointer];
           if (w == null || w.shape != KShape.joystick) return;
           final prev = _joyDirs[e.pointer] ?? {};
@@ -163,13 +214,14 @@ class _CustomPlayPageState extends State<CustomPlayPage> {
           setState(() {});
         }
 
-        void up(PointerEvent e) {
-          final w = _active.remove(e.pointer);
+        /// 释放该指针占用的键盘组件（摇杆方向键 / 映射键 / 联立恢复）
+        void releaseComponent(int ptr) {
+          final w = _active.remove(ptr);
           if (w == null) return;
           _pressedIds.remove(w.id);
 
           if (w.shape == KShape.joystick) {
-            final dirs = _joyDirs.remove(e.pointer) ?? {};
+            final dirs = _joyDirs.remove(ptr) ?? {};
             for (final k in dirs) {
               _grpc.sendKey(
                   key: k, isRune: !isNamedKey(k), isPressed: false);
@@ -193,6 +245,28 @@ class _CustomPlayPageState extends State<CustomPlayPage> {
             }
           }
           setState(() {});
+        }
+
+        void up(PointerUpEvent e) {
+          // ★ 混合模板：鼠标层指针
+          if (_mousePtrs.remove(e.pointer)) {
+            _mouse?.onUp(e);
+            // 手指全部抬起 → 收起圆点
+            if (_mousePtrs.isEmpty) _mouse?.fingerPos.value = null;
+            setState(() {});
+            return;
+          }
+          releaseComponent(e.pointer);
+        }
+
+        void cancel(PointerCancelEvent e) {
+          if (_mousePtrs.remove(e.pointer)) {
+            _mouse?.onCancel(e);
+            if (_mousePtrs.isEmpty) _mouse?.fingerPos.value = null;
+            setState(() {});
+            return;
+          }
+          releaseComponent(e.pointer);
         }
 
         return Stack(clipBehavior: Clip.none, children: [
@@ -227,6 +301,17 @@ class _CustomPlayPageState extends State<CustomPlayPage> {
                 ),
               ),
             ),
+          // ★ 混合模板：鼠标触控的手指圆点（不拦截触摸）
+          if (_mouse != null)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: FingerDotPainter(_mouse.fingerPos),
+                  ),
+                ),
+              ),
+            ),
           // 2. 触摸层（吃掉所有指针）
           Positioned.fill(
             child: Listener(
@@ -234,7 +319,7 @@ class _CustomPlayPageState extends State<CustomPlayPage> {
               onPointerDown: down,
               onPointerMove: move,
               onPointerUp: up,
-              onPointerCancel: up,
+              onPointerCancel: cancel,
               child: const SizedBox.expand(),
             ),
           ),

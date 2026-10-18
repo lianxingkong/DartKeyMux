@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:flutter_application_1/function_area/services/template_service.dart';  // ★ 换成导入 Service
+import 'package:flutter_application_1/app_config.dart';
 import './import_dialog.dart';
 
 
@@ -23,6 +24,9 @@ class FloatButton extends StatelessWidget {
       screenSize.height - fabPosition.dy,
     );
 
+    // ★ 混合模板属于实验性功能：开关关闭时不出现该选项
+    final expOn = AppConfig.experimentalMode.value;
+
     final result = await showMenu<String>(
       context: context,
       position: position,
@@ -31,8 +35,8 @@ class FloatButton extends StatelessWidget {
       ),
       elevation: 4,
       constraints: const BoxConstraints(minWidth: menuWidth),
-      items: const [
-        PopupMenuItem(
+      items: [
+        const PopupMenuItem(
           value: 'add_share_template',
           height: 56, // 56
           child: Row(children: [
@@ -41,7 +45,7 @@ class FloatButton extends StatelessWidget {
             Text('导入模板'),
           ]),
         ),
-        PopupMenuItem(
+        const PopupMenuItem(
           value: 'add_mouse_move',
           height: 56,
           child: Row(children: [
@@ -50,7 +54,7 @@ class FloatButton extends StatelessWidget {
             Text('新建鼠标模板'),
           ]),
         ),
-        PopupMenuItem(
+        const PopupMenuItem(
           value: 'add_new_template',
           height: 56,
           child: Row(children: [
@@ -59,6 +63,17 @@ class FloatButton extends StatelessWidget {
             Text('新建点击模板'),
           ]),
         ),
+        // ★ 实验性：混合模板（鼠标底层 + 键盘组件）
+        if (expOn)
+          const PopupMenuItem(
+            value: 'add_mix_template',
+            height: 56,
+            child: Row(children: [
+              Icon(Icons.layers_outlined, size: 20),
+              SizedBox(width: 8),
+              Text('新建混合模板'),
+            ]),
+          ),
       ],
     );
 
@@ -71,6 +86,8 @@ class FloatButton extends StatelessWidget {
       await TemplateService.instance.addTemplate(context);
     } else if (result == 'add_mouse_move') {
       await TemplateService.instance.addMouseMove(context);
+    } else if (result == 'add_mix_template') {
+      await TemplateService.instance.addMixTemplate(context);
     }
   }
 

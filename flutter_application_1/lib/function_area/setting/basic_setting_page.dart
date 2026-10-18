@@ -31,8 +31,9 @@ class _SettingPage extends State<SettingPage> {
           Text('实验性功能'),
         ]),
         content: const Text(
-          '你即将开启实验性功能（摇杆组件、按键映射表等）。\n\n'
+          '你即将开启实验性功能（混合模板、摇杆组件、按键联立、按键映射表等）。\n\n'
           '这些功能仍在测试阶段，可能存在不稳定或未预期的行为。\n'
+          '禁止用于作弊或违规行为，开发者不对任何用途负责\n'
           '开发者不对此造成的任何后果负责。\n\n'
           '确定要继续吗？',
         ),
@@ -153,6 +154,30 @@ class _SettingPage extends State<SettingPage> {
                           leading:
                               const Icon(Icons.games_outlined, size: 20),
                           title: const Text("摇杆组件（编辑器内可选）"),
+                          dense: true,
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.link, size: 20),
+                          title: const Text("按键联立（编辑器工具栏「联立」）"),
+                          subtitle: Text(
+                            '按下某键时，另一组件的映射键临时改变，松开恢复',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: AppTheme.textSecondary(context)),
+                          ),
+                          dense: true,
+                        ),
+                        ListTile(
+                          leading:
+                              const Icon(Icons.layers_outlined, size: 20),
+                          title: const Text("混合模板（主页 + →「新建混合模板」）"),
+                          subtitle: Text(
+                            '鼠标触控为底层，键盘组件叠在其上；'
+                            '点到组件走键盘，点到空白走鼠标',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: AppTheme.textSecondary(context)),
+                          ),
                           dense: true,
                         ),
                       ],

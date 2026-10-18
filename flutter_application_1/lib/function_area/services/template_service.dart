@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import 'package:flutter_application_1/function_area/floating_window/create_template_page.dart';
 import 'package:flutter_application_1/function_area/floating_window/create_mouse_move_page.dart';
+import 'package:flutter_application_1/function_area/floating_window/create_mix_template_page.dart';
 import '../all_template/base/template_document.dart';
 
 import '../services/template_codec.dart';
@@ -138,13 +139,36 @@ class TemplateService extends ChangeNotifier {
     // debugPrint('【新建鼠标移动】已保存: ${draftM.name}');
   }
 
+  // ★ 新建混合模板（鼠标底层 + 键盘组件，实验性功能）
+  Future<void> addMixTemplate(BuildContext context) async {
+    final draftX = await Navigator.push<TemplateDraft>(
+      context,
+      MaterialPageRoute(builder: (_) => const CreateMixTemplatePage()),
+    );
+    if (draftX == null) return;
+
+    templates.insert(0, jsonEncode(draftX.toJson())); // 新模板排最前
+    if (_autoStartIndex != null) {
+      _autoStartIndex = _autoStartIndex! + 1;
+      await _persistAutoStart();
+    }
+    notifyListeners();
+    await _persist();
+    debugPrint('【新建】已保存混合模板: ${draftX.name}');
+  }
+
   /// 编辑：传入旧草稿回填，保存后覆盖原位置
+  /// ★ 按类型路由：混合模板走混合编辑器（保留鼠标底层）
   Future<void> editTemplate(BuildContext context, int index) async {
     final oldDraft = TemplateDraft.fromJson(templates[index]);
 
     final draft = await Navigator.push<TemplateDraft>(
       context,
-      MaterialPageRoute(builder: (_) => CreateTemplatePage(initial: oldDraft)),
+      MaterialPageRoute(
+        builder: (_) => oldDraft.isMix
+            ? CreateMixTemplatePage(initial: oldDraft, editIndex: index)
+            : CreateTemplatePage(initial: oldDraft),
+      ),
     );
     if (draft == null) return;
 
@@ -187,16 +211,16 @@ class TemplateService extends ChangeNotifier {
 
 
   /// 分享：导出紧凑码 → 复制剪贴板（如需系统分享面板，接 share_plus 即可）
-  /// ★ 鼠标模板不支持分享（无组件结构，分享码无意义）
+  /// ★ 含鼠标触控层的模板不支持分享（分享码不含鼠标配置）
   Future<void> shareTemplate(BuildContext context, int index) async {
     final draft = draftAt(index);
-    if (draft.isMouse) {
+    if (draft.hasMouseLayer) {
       if (!context.mounted) return;
       await showDialog(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('无法分享'),
-          content: const Text('鼠标触控模板暂不支持分享功能。'),
+          content: const Text('含鼠标触控层的模板暂不支持分享功能。'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
