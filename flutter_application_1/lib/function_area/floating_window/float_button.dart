@@ -60,7 +60,7 @@ class FloatButton extends StatelessWidget {
           child: Row(children: [
             Icon(Icons.add_chart_outlined, size: 20),
             SizedBox(width: 8),
-            Text('新建点击模板'),
+            Text('新建键盘模板'),
           ]),
         ),
         // ★ 实验性：混合模板（鼠标底层 + 键盘组件）

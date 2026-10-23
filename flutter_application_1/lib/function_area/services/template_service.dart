@@ -211,6 +211,7 @@ class TemplateService extends ChangeNotifier {
 
 
   /// 分享：导出紧凑码 → 复制剪贴板（如需系统分享面板，接 share_plus 即可）
+  /// ★ 分享码只含纯数据，不含背景图/组件图（图片是本机绝对路径，换设备必失效）
   /// ★ 含鼠标触控层的模板不支持分享（分享码不含鼠标配置）
   Future<void> shareTemplate(BuildContext context, int index) async {
     final draft = draftAt(index);

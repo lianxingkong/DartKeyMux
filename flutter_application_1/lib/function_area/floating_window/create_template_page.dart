@@ -96,6 +96,16 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
   /// 画布缩放（双指拉升 / 工具栏 ± 按钮）
   double _canvasScale = 1.0;
 
+  /// 双指缩放起点时的画布比例
+  ///
+  /// ★ ScaleUpdateDetails.scale 是「相对本次手势起点」的累计倍率，
+  ///   只能在起点值上乘一次；每帧都拿它乘当前值会指数级放大
+  ///   （两指稍微张开就一路冲到 3×）。
+  double _scaleStartValue = 1.0;
+
+  /// 当前手势的手指数，用于手指数变化时重新起算基准
+  int _scalePointerCount = 0;
+
   /// ★ 背景图片
   String? _bgImage;
   double _bgOpacity = 1.0;
@@ -271,9 +281,21 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
   }
 
   // ── 画布缩放 ──
+  void _onScaleStart(ScaleStartDetails d) {
+    _scaleStartValue = _canvasScale;
+    _scalePointerCount = d.pointerCount;
+  }
+
   void _onScaleUpdate(ScaleUpdateDetails d) {
+    // 单指拖动中途又落下一根手指：scale 的基准会跳变，
+    // 以"当前比例 / 当前 scale"重设起点，保证这一帧画面不跳
+    if (d.pointerCount != _scalePointerCount) {
+      _scalePointerCount = d.pointerCount;
+      _scaleStartValue = d.scale == 0 ? _canvasScale : _canvasScale / d.scale;
+      return;
+    }
     setState(() {
-      _canvasScale = (_canvasScale * d.scale).clamp(0.3, 3.0);
+      _canvasScale = (_scaleStartValue * d.scale).clamp(0.3, 3.0);
     });
   }
 
@@ -435,7 +457,7 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
           // 画布（全屏）+ 双指缩放手势
           Positioned.fill(
             child: GestureDetector(
-              onScaleStart: (_) {},            // 必须提供才能触发 onScaleUpdate
+              onScaleStart: _onScaleStart,
               onScaleUpdate: _onScaleUpdate,
               child: Transform.scale(
                 scale: _canvasScale,

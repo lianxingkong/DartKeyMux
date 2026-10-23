@@ -35,6 +35,29 @@ class _BackgroundCropPageState extends State<BackgroundCropPage> {
   double _opacity = 1.0;
   Offset _offset = Offset.zero;
 
+  /// 手势起点的缩放值。ScaleUpdateDetails.scale 是相对手势起点的累计倍率，
+  /// 每帧拿它乘当前值会指数级放大（两指微张就冲到 5×）。
+  double _scaleStartValue = 1.0;
+  int _scalePointerCount = 0;
+
+  void _onScaleStart(ScaleStartDetails d) {
+    _scaleStartValue = _scale;
+    _scalePointerCount = d.pointerCount;
+  }
+
+  void _onScaleUpdate(ScaleUpdateDetails d) {
+    // 手指数变化时以当前比例为基准重新起算，避免 scale 基准跳变
+    if (d.pointerCount != _scalePointerCount) {
+      _scalePointerCount = d.pointerCount;
+      _scaleStartValue = d.scale == 0 ? _scale : _scale / d.scale;
+      return;
+    }
+    setState(() {
+      _scale = (_scaleStartValue * d.scale).clamp(0.3, 5.0);
+      _offset += d.focalPointDelta;
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -121,12 +144,8 @@ class _BackgroundCropPageState extends State<BackgroundCropPage> {
                 children: [
                   // ── 背景图片（可手势缩放/拖动）──
                   GestureDetector(
-                    onScaleUpdate: (d) {
-                      setState(() {
-                        _scale = (_scale * d.scale).clamp(0.3, 5.0);
-                        _offset += d.focalPointDelta;
-                      });
-                    },
+                    onScaleStart: _onScaleStart,
+                    onScaleUpdate: _onScaleUpdate,
                     child: Transform.translate(
                       offset: _offset,
                       child: Transform.scale(

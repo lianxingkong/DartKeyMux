@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../base/key_widget.dart';
 import '../base/template_document.dart';
@@ -8,6 +9,23 @@ import '../base/floating_control.dart';
 import '../base/mouse_touch_core.dart';
 import '../../services/connect_grc.dart';
 import '../../setting/mapping_key_page.dart';
+
+// ── 延迟测量探针（方案 C，测完删除本段即可）──────────────────────────────
+// 与 MainActivity.kt 的 "dkm_latency" 通道对应，取内核触摸时间戳。
+// 日志 tag 固定为 DKM_LAT，便于 `adb logcat` 精确过滤。
+const MethodChannel _kLatency = MethodChannel('dkm_latency');
+Map<Object?, Object?>? _lastNativeTouchInfo;
+
+/// 把 nativeTimeMs / uptimeMs / wallTimeMs 换算成墙钟时刻（毫秒）
+int _nativeWallMs() {
+  final info = _lastNativeTouchInfo;
+  if (info == null) return -1;
+  final native = (info['nativeTimeMs'] as num?)?.toInt() ?? 0;
+  final uptime = (info['uptimeMs'] as num?)?.toInt() ?? 0;
+  final wall = (info['wallTimeMs'] as num?)?.toInt() ?? 0;
+  return wall - (uptime - native);
+}
+// ──────────────────────────────────────────────────────────────────────────
 
 /// 自定义模板游玩页：
 /// - 单个全屏 Listener 接收所有指针，从最上层组件开始做"旋转感知"命中
@@ -61,6 +79,13 @@ class _CustomPlayPageState extends State<CustomPlayPage> {
   @override
   void initState() {
     super.initState();
+    // 延迟测量：接收原生层上报的触摸内核时间戳
+    _kLatency.setMethodCallHandler((call) async {
+      if (call.method == 'touch') {
+        _lastNativeTouchInfo = (call.arguments as Map?)?.cast<Object?, Object?>();
+      }
+      return null;
+    });
     _grpc.startSession();
   }
 
@@ -165,6 +190,17 @@ class _CustomPlayPageState extends State<CustomPlayPage> {
             }
             return;
           }
+          // ── 延迟测量：触摸进入 App 的第一站，此处打点 ──────────────────
+          // wallMs   = 墙钟时刻（与后端日志可直接相减）
+          // nativeMs = 内核触摸时刻换算的墙钟值（比 wallMs 更接近"真正按下"）
+          // deltaMs  = 内核事件到本次分发的延迟
+          debugPrint('DKM_LAT down'
+              ' key="${w.key}"'
+              ' ptr=${e.pointer}'
+              ' wallMs=${DateTime.now().millisecondsSinceEpoch}'
+              ' nativeMs=${_nativeWallMs()}'
+              ' deltaMs=${(_lastNativeTouchInfo?['deltaMs'] as num?)?.toInt() ?? -1}');
+          // ────────────────────────────────────────────────────────────
           _active[e.pointer] = w;
           _pressedIds.add(w.id);
           if (w.shape == KShape.joystick) {
@@ -256,6 +292,13 @@ class _CustomPlayPageState extends State<CustomPlayPage> {
             setState(() {});
             return;
           }
+          // ── 延迟测量：松开侧打点 ────────────────────────────────────
+          debugPrint('DKM_LAT up'
+              ' key="${_active[e.pointer]?.key ?? ""}"'
+              ' ptr=${e.pointer}'
+              ' wallMs=${DateTime.now().millisecondsSinceEpoch}'
+              ' nativeMs=${_nativeWallMs()}');
+          // ────────────────────────────────────────────────────────────
           releaseComponent(e.pointer);
         }
 

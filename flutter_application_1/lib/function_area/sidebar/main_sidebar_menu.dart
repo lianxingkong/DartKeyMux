@@ -35,22 +35,36 @@ class _MainSidebarMenuState extends State<MainSidebarMenu> {
 
   // ── 读取本地保存 ──
   Future<void> _loadPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
+    String? avatarPath;
+    String userName = '用户名';
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      avatarPath = prefs.getString(_prefAvatarPath);
+      userName = prefs.getString(_prefUserName) ?? '用户名';
+    } catch (e) {
+      // 插件未就绪/读取失败时退回默认值，不能让侧边栏因为一个异步异常挂掉
+      debugPrint('读取用户信息失败: $e');
+    }
+    if (!mounted) return; // 等待期间页面可能已销毁
     setState(() {
-      _avatarPath = prefs.getString(_prefAvatarPath);
-      _userName = prefs.getString(_prefUserName) ?? '用户名';
+      _avatarPath = avatarPath;
+      _userName = userName;
     });
   }
 
   // ── 写入本地保存 ──
   Future<void> _savePrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (_avatarPath != null && _avatarPath!.isNotEmpty) {
-      await prefs.setString(_prefAvatarPath, _avatarPath!);
-    } else {
-      await prefs.remove(_prefAvatarPath);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (_avatarPath != null && _avatarPath!.isNotEmpty) {
+        await prefs.setString(_prefAvatarPath, _avatarPath!);
+      } else {
+        await prefs.remove(_prefAvatarPath);
+      }
+      await prefs.setString(_prefUserName, _userName);
+    } catch (e) {
+      debugPrint('保存用户信息失败: $e');
     }
-    await prefs.setString(_prefUserName, _userName);
   }
 
   // ─────────────────────────────────────────────
@@ -131,6 +145,7 @@ class _MainSidebarMenuState extends State<MainSidebarMenu> {
     );
 
     if (result == null || result.isEmpty) return;
+    if (!mounted) return;
     setState(() => _userName = result);
     await _savePrefs();
   }
@@ -186,11 +201,7 @@ class _MainSidebarMenuState extends State<MainSidebarMenu> {
 
   @override
   Widget build(BuildContext context) {
-    final dark = AppTheme.isDark.value;
-    final sidebarBg = AppTheme.sidebarBg(context);
     // 侧边栏文字颜色：亮色模式用深绿，暗色模式用浅灰白
-    final sidebarText = dark ? const Color(0xFFC8E6C9) : const Color.fromARGB(255, 27, 94, 32);
-
     return ValueListenableBuilder<bool>(
       valueListenable: AppTheme.isDark,
       builder: (context, darkVal, _) {

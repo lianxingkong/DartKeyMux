@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/src/generated/keymux.pbgrpc.dart';
 
@@ -54,7 +52,20 @@ class MouseTouchEngine {
   // ── 阈值常量 ──
   static const double tapMaxDist = 10.0;   // 轻触判定最大位移
   static const int tapMaxMs = 200;          // 轻触判定最长时间
-  static const double scrollThreshold = 3.0; // 滚轮灵敏度阈值
+
+  /// ★ 双指滚轮换算：每 50 逻辑像素位移 = 1 格滚轮。
+  ///
+  /// 后端 proto 里 `scroll_delta` 的单位是**滚轮格数（detent）**，不是像素
+  /// （见 GoKeyMux/internal/input/types.go，FakerInput 甚至直接按 int8 注入）。
+  /// 以前这里把手机像素原样发过去，手指动 30px 就发 30 格，所以"偏移一点
+  /// 就滑到头"。50 逻辑像素 ≈ 0.7~0.8cm 手指移动，接近笔记本触控板的节奏。
+  static const double scrollPxPerDetent = 50.0;
+
+  /// 单次事件最多发几格（防止一次超大位移直接跳到底）
+  static const int maxScrollDetentsPerEvent = 10;
+
+  /// 不足一格滚轮的像素余量，留到下一次事件继续累计
+  double _scrollRemainderPx = 0.0;
 
   MouseTouchEngine({
     this.sensitivity = 1.0,
@@ -81,6 +92,7 @@ class MouseTouchEngine {
     }
     ptrs.clear();
     activeFingerCount = 0;
+    _resetScrollRemainder();
     dotFinger = -1;
     fingerPos.value = null;
   }
@@ -123,10 +135,48 @@ class MouseTouchEngine {
     send(type, dd.dx.round(), dd.dy.round(), 0);
   }
 
+  /// 双指滚动：把像素位移累计换算成滚轮格数，再发给后端。
+  ///
+  /// [d] 是本次指针事件的位移；调用方会先除以手指数，得到"双指质心"位移，
+  /// 这样两根手指同时移动时不会被重复计两次。
   void sendScrollDelta(Offset d) {
-    final dd = d * sensitivity;
-    send(MouseEvent_EventType.SCROLL, 0, 0, dd.dy.round());
+    final step = scrollStep(
+      _scrollRemainderPx,
+      d.dy,
+      scrollPxPerDetent,
+      maxScrollDetentsPerEvent,
+    );
+    _scrollRemainderPx = step.remainder;
+    if (step.detents != 0) {
+      send(MouseEvent_EventType.SCROLL, 0, 0, step.detents);
+    }
   }
+
+  /// 纯换算：像素位移 → 滚轮格数，并返回不足一格的余量。
+  /// 抽成静态方法便于单测（不触发 gRPC）。
+  @visibleForTesting
+  static ({int detents, double remainder}) scrollStep(
+    double remainderPx,
+    double dy,
+    double pxPerDetent, [
+    int maxPerEvent = 10,
+  ]) {
+    if (pxPerDetent <= 0 || !dy.isFinite) {
+      return (detents: 0, remainder: remainderPx);
+    }
+    var total = remainderPx + dy;
+    final whole = (total / pxPerDetent).truncate();
+    if (whole == 0) {
+      return (detents: 0, remainder: total);
+    }
+    // 只减掉"已经发出去的那部分"，余量继续留给下一帧
+    total -= whole * pxPerDetent;
+    final detents = whole.clamp(-maxPerEvent, maxPerEvent);
+    return (detents: detents, remainder: total);
+  }
+
+  /// 双指手势结束/开始新手势时清空余量，避免上一轮的半格带到下一轮
+  void _resetScrollRemainder() => _scrollRemainderPx = 0.0;
 
   // ════════════════════════════════════════════
   //  触控事件分发
@@ -136,6 +186,8 @@ class MouseTouchEngine {
     final ptr = MousePointer(e.pointer, e.position, DateTime.now());
     ptrs[e.pointer] = ptr;
     activeFingerCount = ptrs.length;
+    // 第二根手指落下 = 新的双指滚轮手势，余量从 0 开始
+    if (ptrs.length >= 2) _resetScrollRemainder();
 
     // 画圆点用第一个手指
     if (dotFinger < 0 || !ptrs.containsKey(dotFinger)) {
@@ -189,6 +241,7 @@ class MouseTouchEngine {
     if (ptr == null) return;
     final wasCount = activeFingerCount;
     activeFingerCount = ptrs.length;
+    if (activeFingerCount < 2) _resetScrollRemainder(); // 双指手势结束
 
     if (e.pointer == dotFinger) {
       dotFinger = ptrs.keys.firstOrNull ?? -1;
@@ -208,6 +261,7 @@ class MouseTouchEngine {
     final ptr = ptrs.remove(e.pointer);
     if (ptr == null) return;
     activeFingerCount = ptrs.length;
+    if (activeFingerCount < 2) _resetScrollRemainder();
     // ★ 仅移动模式：从不会有按下状态，只需清理圆点归属
     if (moveOnly) {
       if (e.pointer == dotFinger) {
@@ -242,8 +296,9 @@ class MouseTouchEngine {
 
   void onMoveDrag(MousePointer ptr, PointerMoveEvent e) {
     final n = activeFingerCount;
-    if (n >= 2 && e.delta.dy.abs() > scrollThreshold) {
-      sendScrollDelta(e.delta);
+    if (n >= 2) {
+      // 双指：按质心位移换算滚轮格数（见 scrollPxPerDetent）
+      sendScrollDelta(e.delta / n.toDouble());
     } else if (n == 1 && ptr.dragActivated) {
       sendDelta(MouseEvent_EventType.MOVE, e.delta);
     } else if (n == 3) {
@@ -270,9 +325,9 @@ class MouseTouchEngine {
     final justCrossed = dist > tapMaxDist && !ptr.hasMoved;
     if (dist > tapMaxDist) ptr.hasMoved = true;
 
-    // 双指以上 + 垂直移动 → 滚轮（优先，不发送 MOVE）
-    if (n >= 2 && e.delta.dy.abs() > scrollThreshold) {
-      sendScrollDelta(e.delta);
+    // 双指以上 → 滚轮（优先，不发送 MOVE）
+    if (n >= 2) {
+      sendScrollDelta(e.delta / n.toDouble());
       return;
     }
 
